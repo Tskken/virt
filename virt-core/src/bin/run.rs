@@ -59,6 +59,8 @@ fn main() {
     .build_vk_surface(&event_loop, instance.clone())
     .unwrap();
 
+    println!("devices {:?}", PhysicalDevice::enumerate(&instance));
+
     let mut physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let mut found: bool = false;
