@@ -6,7 +6,7 @@ use vulkano::image::SwapchainImage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive, CompositeAlpha};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Surface, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive, CompositeAlpha};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -38,10 +38,9 @@ fn main() {
     //
     // For the sake of the example we are just going to use the first device, which should work
     // most of the time.
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+    
 
-    // Some little debug infos.
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+   
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
@@ -59,6 +58,30 @@ fn main() {
     .with_decorations(false)
     .build_vk_surface(&event_loop, instance.clone())
     .unwrap();
+
+    let mut physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+
+    let mut found: bool = false;
+
+    for phy in PhysicalDevice::enumerate(&instance) {
+        let caps = surface.capabilities(phy).unwrap();
+
+        if caps.supported_composite_alpha.pre_multiplied {
+            physical = phy;
+            found = true;
+            break;
+        } else if caps.supported_composite_alpha.post_multiplied {
+            physical = phy;
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        panic!("No support for transparency!")
+    }
+
+     
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -114,10 +137,17 @@ fn main() {
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
+
+        println!("{:?}", caps.supported_composite_alpha);
+
         let mut alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         if caps.supported_composite_alpha.post_multiplied {
             alpha = CompositeAlpha::PostMultiplied;
+        }
+
+        if caps.supported_composite_alpha.pre_multiplied {
+            alpha = CompositeAlpha::PreMultiplied;
         }
 
         // Choosing the internal format that the images will have.

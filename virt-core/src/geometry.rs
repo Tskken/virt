@@ -328,15 +328,15 @@ impl Point {
 
     pub fn project(self, v: Point) -> Point {   
         Point {
-            x: v.x * self.x.abs() + 0.5,
-            y: v.y * self.y.abs() - 0.5,
+            x: (self.x + 1.0) / 2.0 * v.x,
+            y: (1.0 - self.y) / 2.0 * v.y,
         }
     }
 
     pub fn unproject(self, v: Point) -> Point {
         Point {
-            x: self.x / v.x - 0.5,
-            y: self.y / v.y + 0.5,
+            x: 2.0 * self.x / v.x - 1.0,
+            y: -2.0 * self.y / v.y + 1.0,
         }
     }
 
