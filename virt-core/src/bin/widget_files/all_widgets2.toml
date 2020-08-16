@@ -1,13 +1,13 @@
 name = "test widget with all values"
 width = 900
 height = 500
-color = "#00000096"
-position = [50, 50]
+color = "#ffffff96"
+position = [1000, 150]
 
 [[shape]]
 name = "test triangle"
 shape_type = "Triangle"
-color = "#ffffffff"
+color = "#000000ff"
 shape = [
     50, 50, 
     250, 250, 
@@ -17,7 +17,7 @@ shape = [
 [[shape]]
 name = "test triangle"
 shape_type = "Triangle"
-color = "#ffffffff"
+color = "#000000ff"
 shape = [
     50, 400,
     300, 300,
@@ -27,7 +27,7 @@ shape = [
 [[shape]]
 name = "test triangle"
 shape_type = "Rectangle"
-color = "#ffffffff"
+color = "#000000ff"
 shape = [
     500, 50,
     800, 400

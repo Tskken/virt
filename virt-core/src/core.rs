@@ -4,22 +4,18 @@ use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{ImageUsage};
 use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
-// use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
-// use vulkano::pipeline::vertex::SingleBufferDefinition;
-// use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::swapchain;
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
-    SwapchainCreationError, Surface, SwapchainAcquireFuture
+    SwapchainCreationError, Surface
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::event_loop::EventLoop;
+use winit::window::{Window, WindowBuilder, WindowId};
 use winit::dpi::{LogicalSize, LogicalPosition};
 
 use std::sync::Arc;
@@ -29,21 +25,203 @@ use crate::util::*;
 use crate::geometry::Vector;
 use crate::decoder;
 use crate::widget::Widget;
+use crate::decoder::WidgetConfig;
+
+pub struct CoreState {
+    pub instance: Arc<Instance>,
+    pub physical_index: usize,
+
+    pub queue: Arc<Queue>,
+    pub device: Arc<Device>,
+
+    pub buffer_pool: CpuBufferPool<Vector>,
+
+    pub pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+
+    pub surfaces: HashMap<WindowId, CoreSurface>,
+}
+
+impl CoreState {
+    pub fn new() -> (CoreState, EventLoop<()>){
+        let instance = Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
+        let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::IntegratedGpu).unwrap();
+
+        let event_loop = EventLoop::new();
+
+        let physical = PhysicalDevice::from_index(&instance, physical_index).unwrap();
+
+        let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_graphics())
+        .unwrap();
+
+        let device_ext = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
+        let (device, mut queues) = Device::new(
+            physical,
+            physical.supported_features(),
+            &device_ext,
+            [(queue_family, 0.5)].iter().cloned(),
+        )
+        .unwrap();
+
+        let queue = queues.next().unwrap();
+
+        let widget_config = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets.toml").unwrap();
+
+        let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config).unwrap();
+
+        let widget_config2 = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets2.toml").unwrap();
+
+        let surface2 = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config2).unwrap();
+
+        vulkano::impl_vertex!(Vector, position, color);
+
+        let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
+
+        let vs = vs::Shader::load(device.clone()).unwrap();
+        let fs = fs::Shader::load(device.clone()).unwrap();
+
+        let pipeline = Arc::new(
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<Vector>()
+                .vertex_shader(vs.main_entry_point(), ())
+                .triangle_list()
+                .viewports_dynamic_scissors_irrelevant(1)
+                .fragment_shader(fs.main_entry_point(), ())
+                .render_pass(Subpass::from(surface.render_pass.clone(), 0).unwrap())
+                .build(device.clone())
+                .unwrap(),
+        );
+
+        let mut surfaces = HashMap::new();
+
+        surfaces.insert(surface.surface.window().id(), surface);
+        surfaces.insert(surface2.surface.window().id(), surface2);
+
+        (CoreState {
+            instance,
+            physical_index,
+            queue,
+            device,
+            buffer_pool,
+            pipeline,
+            surfaces,
+        },
+        event_loop)
+    }
+
+    pub fn draw(&mut self, surface_id: WindowId) {
+        let mut surface = self.surfaces.get_mut(&surface_id).unwrap();
+
+        surface.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+        if surface.recreate_swapchain {
+            let dimensions: [u32; 2] = surface.surface.window().inner_size().into();
+            let (new_swapchain, new_images) =
+                match surface.swapchain.recreate_with_dimensions(dimensions) {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                };
+
+            surface.swapchain = new_swapchain;
+            surface.framebuffers = window_size_dependent_setup(
+                &new_images,
+                surface.render_pass.clone(),
+                &mut surface.dynamic_state,
+            );
+            surface.recreate_swapchain = false;
+        }
+
+        let (image_num, suboptimal, acquire_future) =
+            match swapchain::acquire_next_image(surface.swapchain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    surface.recreate_swapchain = true;
+                    return;
+                }
+                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+            };
+
+        if suboptimal {
+            surface.recreate_swapchain = true;
+        }
+
+
+        let clear_values = vec![surface.widget.color.into()];
+    
+        let buffer = Arc::new(self.buffer_pool.chunk(surface.widget.to_vec().clone()).unwrap());
+    
+        let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+            self.device.clone(),
+            self.queue.family(),
+        )
+        .unwrap();
+    
+        builder
+            .begin_render_pass(surface.framebuffers[image_num].clone(), false, clear_values)
+            .unwrap()
+            .draw(
+                self.pipeline.clone(),
+                &surface.dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )
+            .unwrap()
+            .end_render_pass()
+            .unwrap();
+    
+        let command_buffer = builder.build().unwrap();
+    
+        let future = surface.previous_frame_end
+            .take()
+            .unwrap()
+            .join(acquire_future)
+            .then_execute(self.queue.clone(), command_buffer)
+            .unwrap()
+            .then_swapchain_present(self.queue.clone(), surface.swapchain.clone(), image_num)
+            .then_signal_fence_and_flush();
+    
+        match future {
+            Ok(future) => {
+                surface.previous_frame_end = Some(future.boxed());
+            }
+            Err(FlushError::OutOfDate) => {
+                surface.recreate_swapchain = true;
+                surface.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+            }
+            Err(_) => {
+                surface.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+    
+                panic!("Failed to flush future");
+            }
+        }
+    }
+}
 
 pub struct CoreSurface {
-    surface: Arc<Surface<Window>>,
-    swapchain: Arc<Swapchain<Window>>,
-    //images: Vec<Arc<SwapchainImage<Window>>>,
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: DynamicState,
-    recreate_swapchain: bool,
-    previous_frame_end: Option<Box<(dyn GpuFuture)>>,
-    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    pub surface: Arc<Surface<Window>>,
+    pub swapchain: Arc<Swapchain<Window>>,
+    pub render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+    pub dynamic_state: DynamicState,
+    pub recreate_swapchain: bool,
+    pub previous_frame_end: Option<Box<(dyn GpuFuture)>>,
+    pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
     
+    pub widget: Arc<Widget>,
+
+    pub cur_mouse_pos: Option<Vector>,
+    pub las_mouse_pos: Option<Vector>,
 }
 
 impl CoreSurface {
-    fn new(physical: &PhysicalDevice, device: Arc<Device>, queue: Arc<Queue>, event_loop: &EventLoop<()>, instance: Arc<Instance>, widget: &Widget) -> Result<CoreSurface, &'static str> {
+    fn new(physical: &PhysicalDevice, device: Arc<Device>, queue: Arc<Queue>, event_loop: &EventLoop<()>, instance: Arc<Instance>, config: WidgetConfig) -> Result<CoreSurface, &'static str> {
+        let widget = Widget::new(config).unwrap();
+
         let surface = WindowBuilder::new()
         .with_inner_size(LogicalSize::new(widget.width, widget.height))
         .with_decorations(false)    
@@ -122,267 +300,17 @@ impl CoreSurface {
             CoreSurface {
                 surface,
                 swapchain,
-                //images,
                 render_pass,
                 dynamic_state,
                 recreate_swapchain,
                 previous_frame_end,
                 framebuffers,
+                widget: Arc::new(widget),
+                cur_mouse_pos: None,
+                las_mouse_pos: None,
             }
         )
     }
-}
-
-pub fn run() {
-    let instance = Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
-    let physical = Arc::new(find_device(&instance, PhysicalDeviceType::IntegratedGpu).unwrap());
-
-    let event_loop = EventLoop::new();
-
-    let queue_family = physical
-    .queue_families()
-    .find(|&q| {
-        q.supports_graphics()
-    })
-    .unwrap();
-
-    let device_ext = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::none()
-    };
-    let (device, mut queues) = Device::new(
-        *physical,
-        physical.supported_features(),
-        &device_ext,
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
-
-    let queue = queues.next().unwrap();
-
-    let widget_config = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets.toml").unwrap();
-
-    let widget = Widget::new(widget_config).unwrap();
-
-    let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), &widget).unwrap();
-
-    vulkano::impl_vertex!(Vector, position, color);
-
-    let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
-
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
-
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vector>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(surface.render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
-
-    let mut surfaces = HashMap::new();
-
-    surfaces.insert(surface.surface.window().id(), surface);
-
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-            }
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                surfaces
-                    .get_mut(&window_id)
-                    .unwrap()
-                    .recreate_swapchain = true;
-            }
-            Event::RedrawEventsCleared => {
-                surfaces
-                    .values()
-                    .for_each(|s| s.surface.window().request_redraw());
-            }
-            Event::RedrawRequested(window_id) => {
-                let mut surface = surfaces.get_mut(&window_id).unwrap();
-
-                surface.previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-                if surface.recreate_swapchain {
-                    let dimensions: [u32; 2] = surface.surface.window().inner_size().into();
-                    let (new_swapchain, new_images) =
-                        match surface.swapchain.recreate_with_dimensions(dimensions) {
-                            Ok(r) => r,
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
-
-                    surface.swapchain = new_swapchain;
-                    // Because framebuffers contains an Arc on the old swapchain, we need to
-                    // recreate framebuffers as well.
-                    surface.framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        surface.render_pass.clone(),
-                        &mut surface.dynamic_state,
-                    );
-                    surface.recreate_swapchain = false;
-                }
-
-                // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
-                // no image is available (which happens if you submit draw commands too quickly), then the
-                // function will block.
-                // This operation returns the index of the image that we are allowed to draw upon.
-                //
-                // This function can block if no image is available. The parameter is an optional timeout
-                // after which the function call will return an error.
-                let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(surface.swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
-                            surface.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-
-                // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
-                // will still work, but it may not display correctly. With some drivers this can be when
-                // the window resizes, but it may not cause the swapchain to become out of date.
-                if suboptimal {
-                    surface.recreate_swapchain = true;
-                }
-
-                draw(surface, image_num, acquire_future, buffer_pool.clone(), device.clone(), queue.clone(), pipeline.clone(), &widget).unwrap();
-            }
-            _ => (),
-        }
-    });
-}
-
-fn draw(
-    surface: &mut CoreSurface, 
-    image_num: usize, 
-    acquire_future: SwapchainAcquireFuture<Window>,
-    buffer_pool: CpuBufferPool<Vector>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync + 'static>,
-    widget: &Widget,
-) -> Result<(), &'static str>{
-    // // Specify the color to clear the framebuffer with i.e. blue
-    // let clear_values = vec![[0.0, 0.0, 0.0, 0.0].into()];
-
-    // let data =  Triangle::new(Vector::new(-0.5, -0.25), Vector::new(0.0, 0.5), Vector::new(0.25, -0.1))
-    // .color(1f32, 0f32, 0f32, 1f32)
-    // .to_vec();
-
-    // let data = match widget.triangles.get(0) {
-    //     Some(t) => t.to_vec(),
-    //     None => panic!("Err in getting triangles from widget!"),
-    // };
-
-    let data = {
-        let mut d = Vec::new();
-
-        for triangle in &widget.triangles {
-            d.push(triangle.a);
-            d.push(triangle.b);
-            d.push(triangle.c);
-        };
-
-        d
-    };
-
-    let clear_values = vec![widget.color.into()];
-
-    let buffer = Arc::new(buffer_pool.chunk(data.clone()).unwrap());
-
-    // In order to draw, we have to build a *command buffer*. The command buffer object holds
-    // the list of commands that are going to be executed.
-    //
-    // Building a command buffer is an expensive operation (usually a few hundred
-    // microseconds), but it is known to be a hot path in the driver and is expected to be
-    // optimized.
-    //
-    // Note that we have to pass a queue family when we create the command buffer. The command
-    // buffer will only be executable on that given queue family.
-    let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
-        device.clone(),
-        queue.family(),
-    )
-    .unwrap();
-
-    builder
-        // Before we can draw, we have to *enter a render pass*. There are two methods to do
-        // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
-        // not covered here.
-        //
-        // The third parameter builds the list of values to clear the attachments with. The API
-        // is similar to the list of attachments when building the framebuffers, except that
-        // only the attachments that use `load: Clear` appear in the list.
-        .begin_render_pass(surface.framebuffers[image_num].clone(), false, clear_values)
-        .unwrap()
-        // We are now inside the first subpass of the render pass. We add a draw command.
-        //
-        // The last two parameters contain the list of resources to pass to the shaders.
-        // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-        .draw(
-            pipeline.clone(),
-            &surface.dynamic_state,
-            vec![buffer],
-            (),
-            (),
-        )
-        .unwrap()
-        // We leave the render pass by calling `draw_end`. Note that if we had multiple
-        // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
-        // next subpass.
-        .end_render_pass()
-        .unwrap();
-
-    // Finish building the command buffer by calling `build`.
-    let command_buffer = builder.build().unwrap();
-
-    let future = surface.previous_frame_end
-        .take()
-        .unwrap()
-        .join(acquire_future)
-        .then_execute(queue.clone(), command_buffer)
-        .unwrap()
-        // The color output is now expected to contain our triangle. But in order to show it on
-        // the screen, we have to *present* the image by calling `present`.
-        //
-        // This function does not actually present the image immediately. Instead it submits a
-        // present command at the end of the queue. This means that it will only be presented once
-        // the GPU has finished executing the command buffer that draws the triangle.
-        .then_swapchain_present(queue.clone(), surface.swapchain.clone(), image_num)
-        .then_signal_fence_and_flush();
-
-    match future {
-        Ok(future) => {
-            surface.previous_frame_end = Some(future.boxed());
-        }
-        Err(FlushError::OutOfDate) => {
-            surface.recreate_swapchain = true;
-            surface.previous_frame_end = Some(sync::now(device.clone()).boxed());
-        }
-        Err(_) => {
-            surface.previous_frame_end = Some(sync::now(device.clone()).boxed());
-
-            return Err("Failed to flush future");
-        }
-    }
-
-    Ok(())
 }
 
 mod vs {

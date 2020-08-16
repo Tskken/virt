@@ -1,10 +1,9 @@
 use crate::decoder::{WidgetConfig, DecoderError, Shapes};
 use crate::geometry::*;
+use crate::util::Color;
 
 #[derive(Debug)]
 pub struct Widget {
-    pub name: Option<String>,
-
     pub width: u32,
     pub height: u32,
 
@@ -12,32 +11,22 @@ pub struct Widget {
 
     pub color: [f32; 4],
 
-    pub triangles: Vec<Triangle>,
+    pub shapes: Vec<Box<dyn Shape>>,
 }
 
 impl Widget {
     pub fn new(config: WidgetConfig) -> Result<Widget, DecoderError> {
         let mut widget = Widget{
-            name: config.name,
             width: config.width,
             height: config.height,
             position: Vector::new(config.position[0], config.position[1]),
-            color: [0f32; 4],
-            triangles: Vec::new(),
+            color: Color::none(),
+            shapes: Vec::new(),
         };
 
         match config.color {
             Some(c) => {
-                let color = hex::decode(&c[1..])?;
-
-                let a = color[3] as f32 / u8::MAX as f32;
-
-                widget.color = [
-                    (color[0] as f32 / u8::MAX as f32) * a, 
-                    (color[1] as f32 / u8::MAX as f32) * a, 
-                    (color[2] as f32 / u8::MAX as f32) * a, 
-                    a,
-                ];
+                widget.color = Color::from_hex(hex::decode(&c[1..])?);
             },
             None => (),
         };
@@ -48,10 +37,10 @@ impl Widget {
                     match s.shape_type {
                         Shapes::Triangle => {
                             if s.shape.len() != 6 {
-                                return Err(DecoderError::ValidationFail);
+                                return Err(DecoderError::InvalidShapeFormat);
                             };
 
-                            let mut triangle = Triangle::new(
+                            let triangle = Triangle::new(
                                 Vector::new(s.shape[0], s.shape[1]),
                                 Vector::new(s.shape[2], s.shape[3]),
                                 Vector::new(s.shape[4], s.shape[5]),
@@ -60,49 +49,32 @@ impl Widget {
 
                             match s.color {
                                 Some(c) => {
-                                    let color = hex::decode(&c[1..])?;
-                                    triangle = triangle.color(
-                                        color[0] as f32 / u8::MAX as f32, 
-                                        color[1] as f32 / u8::MAX as f32, 
-                                        color[2] as f32 / u8::MAX as f32, 
-                                        color[3] as f32 / u8::MAX as f32,
-                                    );
+                                    widget.shapes.push(triangle.color(Color::from_hex(hex::decode(&c[1..])?)));
                                 },
-                                None => (),
+                                None => {
+                                    widget.shapes.push(triangle);
+                                }
                             }
-
-                            widget.triangles.push(triangle);
                         },
                         Shapes::Rectangle => {
                             if s.shape.len() != 4 {
-                                return Err(DecoderError::ValidationFail);
+                                return Err(DecoderError::InvalidShapeFormat);
                             };
 
-                            let mut rectangle = Rectangle::new(Vector::new(s.shape[0], s.shape[1]), Vector::new(s.shape[2], s.shape[3]))
+                            let rectangle = Rectangle::new(
+                                Vector::new(s.shape[0], s.shape[1]), 
+                                Vector::new(s.shape[2], s.shape[3])
+                            )
                             .project(config.width as f32, config.height as f32);
-
-                            // let mut triangles: [Triangle; 2] = Rectangle::new(Vector::new(s.point[0].x, s.point[0].y), Vector::new(s.point[1].x, s.point[1].y))
-                            // .project(config.width as f32, config.height as f32)
-                            // .into();
 
                             match s.color {
                                 Some(c) => {
-                                    let color = hex::decode(&c[1..])?;
-
-                                    rectangle = rectangle.color(
-                                        color[0] as f32 / u8::MAX as f32, 
-                                        color[1] as f32 / u8::MAX as f32, 
-                                        color[2] as f32 / u8::MAX as f32, 
-                                        color[3] as f32 / u8::MAX as f32,
-                                    );
+                                    widget.shapes.push(rectangle.color(Color::from_hex(hex::decode(&c[1..])?)));
                                 },
-                                None => (),
-                            }
-
-                            let triangles: [Triangle; 2] = rectangle.into();
-
-                            widget.triangles.push(triangles[0]);
-                            widget.triangles.push(triangles[1]);
+                                None => {
+                                    widget.shapes.push(rectangle);
+                                }
+                            };
                         },
                     };
                 };
@@ -111,5 +83,15 @@ impl Widget {
         };
 
         Ok(widget)
+    }
+
+    pub fn to_vec(&self) -> Vec<Vector> {
+        let mut d: Vec<Vector> = Vec::new();
+
+        for shape in &self.shapes {
+            d.append(&mut shape.to_vec());
+        }
+
+        d
     }
 }

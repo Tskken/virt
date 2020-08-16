@@ -7,10 +7,10 @@ use winit::window::Window;
 
 use std::sync::Arc;
 
-pub fn find_device<'a>(instance: &'a Arc<Instance>, ty: PhysicalDeviceType) -> Result<PhysicalDevice<'a>, &'static str> {
+pub fn find_device_index(instance: Arc<Instance>, ty: PhysicalDeviceType) -> Result<usize, &'static str> {
     for device in PhysicalDevice::enumerate(&instance) {
         if device.ty() == ty {
-            return Ok(device)
+            return Ok(device.index())
         }
     };
 
@@ -43,4 +43,27 @@ pub fn window_size_dependent_setup(
             ) as Arc<dyn FramebufferAbstract + Send + Sync>
         })
         .collect::<Vec<_>>()
+}
+
+#[derive(Debug)]
+pub enum Color {}
+
+impl Color {
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> [f32; 4] {
+        [r, g, b, a]
+    }
+
+    pub fn none() -> [f32; 4] {
+        [0f32, 0f32, 0f32, 0f32]
+    }
+
+    pub fn from_hex(data: Vec<u8>) -> [f32; 4] {
+        let a = data[3] as f32 / u8::MAX as f32;
+        [
+            (data[0] as f32 / u8::MAX as f32) * a,
+            (data[1] as f32 / u8::MAX as f32) * a,
+            (data[2] as f32 / u8::MAX as f32) * a,
+            a,
+        ]
+    }
 }
