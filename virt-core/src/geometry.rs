@@ -399,27 +399,6 @@ impl Vector {
         self.position[1]
     }
 
-    pub fn update(self, x: f32, y: f32) -> Self {
-        Vector {
-            position: [x, y],
-            color: self.color,
-        }
-    }
-
-    pub fn update_x(self, x: f32) -> Self {
-        Vector {
-            position: [x, self.position[1]],
-            color: self.color,
-        }
-    }
-
-    pub fn update_y(self, y: f32) -> Self {
-        Vector {
-            position: [self.position[0], y],
-            color: self.color,
-        }
-    }
-
     pub fn color(self, color: [f32; 4]) -> Self {
         Vector {
             position: self.position,

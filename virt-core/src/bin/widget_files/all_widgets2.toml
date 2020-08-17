@@ -4,31 +4,11 @@ height = 500
 color = "#ffffff96"
 position = [1000, 150]
 
-[[shape]]
-name = "test triangle"
-shape_type = "Triangle"
-color = "#000000ff"
-shape = [
-    50, 50, 
-    250, 250, 
-    400, 50
-]
-
-[[shape]]
-name = "test triangle"
-shape_type = "Triangle"
-color = "#000000ff"
-shape = [
-    50, 400,
-    300, 300,
-    400, 400
-]
-
-[[shape]]
-name = "test triangle"
-shape_type = "Rectangle"
+[[tool]]
+tool_type = "Button"
 color = "#000000ff"
 shape = [
     500, 50,
     800, 400
 ]
+action = "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"

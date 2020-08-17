@@ -1,5 +1,7 @@
 //#![windows_subsystem = "windows"]
 
+#![allow(deprecated)]
+
 use virt_core::core::CoreState;
 use winit::event::{Event, WindowEvent, ElementState, MouseButton};
 use winit::event_loop::ControlFlow;
@@ -64,13 +66,11 @@ fn main() {
                 ..
             } => {
                 if state == ElementState::Pressed && button == MouseButton::Left {
-                    let surface = core_state.surfaces.get(&window_id).unwrap();
+                    let surface = core_state.surfaces.get_mut(&window_id).unwrap();
                     match surface.cur_mouse_pos {
                         Some(val) => {
-                            for shape in &surface.widget.shapes {
-                                if shape.contains(val) {
-                                    println!("you clicked in side the shape!")
-                                }
+                            for button in &mut surface.widget.buttons {
+                                button.clicked(val);
                             };
                         },
                         None => {},

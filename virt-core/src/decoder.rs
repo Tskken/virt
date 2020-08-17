@@ -89,6 +89,8 @@ pub struct WidgetConfig {
 
     // Lits of shapes to be drawn to the WidgetConfig <Optional>
     pub shape: Option<Vec<ShapeWidgetConfig>>,
+
+    pub tool: Option<Vec<ToolWidgetConfig>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -106,4 +108,22 @@ pub struct ShapeWidgetConfig {
 pub enum Shapes {
     Triangle,
     Rectangle,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolWidgetConfig {
+    pub tool_type: Tools,
+
+    pub shape: Vec<f32>,
+
+    pub color: Option<String>,
+
+    pub action: Option<String>,
+
+    pub args: Option<Vec<String>>,
+}
+
+#[derive(Debug, Copy, Clone, Deserialize)]
+pub enum Tools {
+    Button,
 }

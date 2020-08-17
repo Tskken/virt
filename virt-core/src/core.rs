@@ -212,7 +212,7 @@ pub struct CoreSurface {
     pub previous_frame_end: Option<Box<(dyn GpuFuture)>>,
     pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
     
-    pub widget: Arc<Widget>,
+    pub widget: Widget,
 
     pub cur_mouse_pos: Option<Vector>,
     pub las_mouse_pos: Option<Vector>,
@@ -305,7 +305,7 @@ impl CoreSurface {
                 recreate_swapchain,
                 previous_frame_end,
                 framebuffers,
-                widget: Arc::new(widget),
+                widget: widget,
                 cur_mouse_pos: None,
                 las_mouse_pos: None,
             }
