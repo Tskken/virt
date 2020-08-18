@@ -7,14 +7,16 @@ use winit::window::Window;
 
 use std::sync::Arc;
 
-pub fn find_device_index(instance: Arc<Instance>, ty: PhysicalDeviceType) -> Result<usize, &'static str> {
+use crate::error::{CoreError, Result};
+
+pub fn find_device_index(instance: Arc<Instance>, ty: PhysicalDeviceType) -> Result<usize> {
     for device in PhysicalDevice::enumerate(&instance) {
         if device.ty() == ty {
             return Ok(device.index())
         }
     };
 
-    Err("No supported device found")
+    Err(CoreError::NoSupportedPhysicalDevice)
 }
 
 pub fn window_size_dependent_setup(

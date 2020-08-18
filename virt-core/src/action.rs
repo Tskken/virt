@@ -1,27 +1,26 @@
 use std::process::{Command, Child};
-use std::io::Error;
+use crate::error::{CoreError, Result};
 
 #[derive(Debug)]
 pub struct Action {
     pub command: Command,
-
-    pub args: Option<Vec<String>>,
 }
 
 impl Action {
-    pub fn new(command: String, args: Option<Vec<String>>) -> Action {
+    pub fn new(command: String) -> Action {
         Action {
             command: Command::new(command),
-            args,
         }
     }
 
-    pub fn run(&mut self) -> Result<Child, Error> {
-        match &self.args {
-            Some(a) => 
-                return self.command.args(a).spawn(),
-            None => 
-                return self.command.spawn(),
+    pub fn args(&mut self, args: Vec<String>) {
+        self.command.args(args);
+    }
+
+    pub fn run(&mut self) -> Result<Child> {
+        match self.command.spawn() {
+            Ok(c) => return Ok(c),
+            Err(e) => return Err(CoreError::from(e)),
         }
     }
 }

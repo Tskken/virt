@@ -2,13 +2,6 @@ use std::ops::{Add, Sub, Mul, Div};
 use crate::util::Color;
 use core::fmt::Debug;
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
-use vulkano::buffer::CpuBufferPool;
-use vulkano::pipeline::GraphicsPipelineAbstract;
-
-use std::sync::Arc;
-
-
 pub trait Shape : Debug {
     fn center(&self) -> Vector;
     fn area(&self) -> f32;
@@ -16,13 +9,6 @@ pub trait Shape : Debug {
     fn contains(&self, p: Vector) -> bool;
     fn project(&self, width: f32, height: f32) -> Box<dyn Shape>;
     fn to_vec(&self) -> Vec<Vector>;
-    fn draw(
-        &self,
-        builder: &mut AutoCommandBufferBuilder, 
-        buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState,
-    );
 }
 
 /// Rectangle is your standard 2D rectangular shape.
@@ -89,26 +75,6 @@ impl Shape for Rectangle {
             Vector::new(self.max.x(), self.min.y()).color(self.max.color),
             self.max,
         ]
-    }
-
-    fn draw(
-        &self, 
-        builder: &mut AutoCommandBufferBuilder, 
-        buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState,
-    ) {
-        let buffer = Arc::new(buffer_pool.chunk(self.to_vec().clone()).unwrap());
-
-        builder
-            .draw(
-                pipeline.clone(),
-                &dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )
-            .unwrap();
     }
 }
 
@@ -301,25 +267,6 @@ impl Shape for Triangle {
             self.c,
         ]
     }
-
-    fn draw(
-        &self, 
-        builder: &mut AutoCommandBufferBuilder, 
-        buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState,
-    ) {
-        let buffer = Arc::new(buffer_pool.chunk(self.to_vec().clone()).unwrap());
-
-        builder.draw(
-                pipeline.clone(),
-                &dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )
-            .unwrap();
-    }
 }
 
 impl Add<Triangle> for Triangle {
@@ -424,6 +371,163 @@ impl From<[Vector; 3]> for Triangle {
             a: data[0],
             b: data[1],
             c: data[2],
+        }
+    }
+}
+
+#[derive(Default, Debug, PartialEq, PartialOrd, Clone, Copy)]
+pub struct Circle {
+    pub center: Vector,
+    pub radius: Vector,
+}
+
+impl Circle {
+    pub fn new(center: Vector, radius: Vector) -> Circle {
+        Circle {
+            center,
+            radius,
+        }
+    }
+}
+
+impl Shape for Circle {
+    fn center(&self) -> Vector {
+        self.center
+    }
+
+    fn area(&self) -> f32 {
+        0f32
+    }
+
+    fn color(&self, color: [f32; 4]) -> Box<dyn Shape> {
+        Box::new(Circle {
+            center: self.center.color(color),
+            radius: self.radius,
+        })
+    }
+
+    fn contains(&self, _p: Vector) -> bool {
+        false
+    }
+
+    fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
+        Box::new(Circle {
+            center: self.center.project(width, height),
+            radius: self.radius.project(width, height),
+        })
+    }
+
+    fn to_vec(&self) -> Vec<Vector> {
+        Vec::new()
+    }
+}
+
+impl Add<Circle> for Circle {
+    type Output = Circle;
+
+    fn add(self, c: Circle) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius + c.radius,
+        }
+    }
+}
+
+impl Add<Vector> for Circle {
+    type Output = Circle;
+
+    fn add(self, v: Vector) -> Self {
+        Circle {
+            center: self.center + v,
+            radius: self.radius,
+        }
+    }
+}
+
+impl Add<f32> for Circle {
+    type Output = Circle;
+
+    fn add(self, v: f32) -> Self {
+        Circle {
+            center: self.center + v,
+            radius: self.radius,
+        }
+    }
+}
+
+impl Sub<Circle> for Circle {
+    type Output = Circle;
+
+    fn sub(self, c: Circle) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius - c.radius,
+        }
+    }
+}
+
+impl Sub<Vector> for Circle {
+    type Output = Circle;
+
+    fn sub(self, v: Vector) -> Self {
+        Circle {
+            center: self.center - v,
+            radius: self.radius,
+        }
+    }
+}
+
+impl Sub<f32> for Circle {
+    type Output = Circle;
+
+    fn sub(self, v: f32) -> Self {
+        Circle {
+            center: self.center - v,
+            radius: self.radius,
+        }
+    }
+}
+
+impl Mul<Vector> for Circle {
+    type Output = Circle;
+
+    fn mul(self, v: Vector) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius * v,
+        }
+    }
+}
+
+impl Mul<f32> for Circle {
+    type Output = Circle;
+
+    fn mul(self, v: f32) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius * v,
+        }
+    }
+}
+
+impl Div<Vector> for Circle {
+    type Output = Circle;
+
+    fn div(self, v: Vector) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius / v,
+        }
+    }
+}
+
+impl Div<f32> for Circle {
+    type Output = Circle;
+
+    fn div(self, v: f32) -> Self {
+        Circle {
+            center: self.center,
+            radius: self.radius / v,
         }
     }
 }
@@ -670,4 +774,3 @@ impl From<[f32; 6]> for Vector {
         }
     }
 }
-

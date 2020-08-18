@@ -5,14 +5,11 @@
 use virt_core::core::CoreState;
 use winit::event::{Event, WindowEvent, ElementState, MouseButton};
 use winit::event_loop::ControlFlow;
-//use winit::dpi::PhysicalPosition;
 
 use virt_core::geometry::Vector;
 
 fn main() {
-    let (mut core_state, event_loop) = CoreState::new();
-
-    //let mut mouse_pos: Option<PhysicalPosition<f64>> = None;
+    let (mut core_state, event_loop) = CoreState::new().unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -70,7 +67,7 @@ fn main() {
                     match surface.cur_mouse_pos {
                         Some(val) => {
                             for button in &mut surface.widget.buttons {
-                                button.clicked(val);
+                                button.clicked(val).unwrap();
                             };
                         },
                         None => {},
@@ -83,7 +80,7 @@ fn main() {
                     .for_each(|s| s.surface.window().request_redraw());
             }
             Event::RedrawRequested(window_id) => {
-                core_state.draw(window_id);
+                core_state.draw(window_id).unwrap();
             }
             _ => (),
         }

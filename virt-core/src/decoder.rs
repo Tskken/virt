@@ -1,67 +1,8 @@
 use toml;
 use serde_derive::Deserialize;
 use std::fs;
-use toml::de;
-use std::fmt;
-use std::error;
-use std::io;
-use hex;
 
-type Result<T> = std::result::Result<T, DecoderError>;
-
-#[derive(Debug)]
-pub enum DecoderError {
-    ValidationFail,
-    InvalidShapeFormat,
-    ParseTomlErr(de::Error),
-    ParseIoErr(io::Error),
-    ParseHexErr(hex::FromHexError),
-}
-
-impl fmt::Display for DecoderError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            DecoderError::ValidationFail =>
-                write!(f, "validation failed during decoding of WidgetConfig"),
-            DecoderError::InvalidShapeFormat =>
-                write!(f, "the provided values to shape are incorrect"),
-            DecoderError::ParseTomlErr(ref e) => e.fmt(f),
-            DecoderError::ParseIoErr(ref e) => e.fmt(f),
-            DecoderError::ParseHexErr(ref e) => e.fmt(f),
-        }
-    }
-}
-
-impl error::Error for DecoderError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            DecoderError::ValidationFail => None,
-            DecoderError::InvalidShapeFormat => None,
-            DecoderError::ParseTomlErr(ref e) => Some(e),
-            DecoderError::ParseIoErr(ref e) => Some(e),
-            DecoderError::ParseHexErr(ref e) => Some(e),
-        }
-    }
-}
-
-impl From<de::Error> for DecoderError {
-    fn from(err: de::Error) -> DecoderError {
-        DecoderError::ParseTomlErr(err)
-    }
-}
-
-impl From<io::Error> for DecoderError {
-    fn from(err: io::Error) -> DecoderError {
-        DecoderError::ParseIoErr(err)
-    }
-}
-
-impl From<hex::FromHexError> for DecoderError {
-    fn from(err: hex::FromHexError) -> DecoderError {
-        DecoderError::ParseHexErr(err)
-    }
-}
-
+use crate::error::Result;
 
 pub fn decode(path: &str) -> Result<WidgetConfig> {
 

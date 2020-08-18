@@ -7,8 +7,7 @@ use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::swapchain;
 use vulkano::swapchain::{
-    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
-    SwapchainCreationError, Surface
+    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain, Surface
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
@@ -26,6 +25,7 @@ use crate::geometry::Vector;
 use crate::decoder;
 use crate::widget::Widget;
 use crate::decoder::WidgetConfig;
+use crate::error::{CoreError, Result};
 
 pub struct CoreState {
     pub instance: Arc<Instance>,
@@ -36,15 +36,15 @@ pub struct CoreState {
 
     pub buffer_pool: CpuBufferPool<Vector>,
 
-    pub pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pub pipeline: ShapesPipeline,
 
     pub surfaces: HashMap<WindowId, CoreSurface>,
 }
 
 impl CoreState {
-    pub fn new() -> (CoreState, EventLoop<()>){
-        let instance = Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
-        let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::IntegratedGpu).unwrap();
+    pub fn new() -> Result<(CoreState, EventLoop<()>)>{
+        let instance = Instance::new(None, &vulkano_win::required_extensions(), None)?;
+        let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::IntegratedGpu)?;
 
         let event_loop = EventLoop::new();
 
@@ -64,44 +64,30 @@ impl CoreState {
             physical.supported_features(),
             &device_ext,
             [(queue_family, 0.5)].iter().cloned(),
-        )
-        .unwrap();
+        )?;
 
         let queue = queues.next().unwrap();
 
-        let widget_config = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets.toml").unwrap();
+        let widget_config = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets.toml")?;
 
-        let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config).unwrap();
+        let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config)?;
 
-        let widget_config2 = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets2.toml").unwrap();
+        let widget_config2 = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets2.toml")?;
 
-        let surface2 = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config2).unwrap();
+        let surface2 = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config2)?;
 
         vulkano::impl_vertex!(Vector, position, color);
 
         let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
 
-        let vs = vs::Shader::load(device.clone()).unwrap();
-        let fs = fs::Shader::load(device.clone()).unwrap();
-
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vector>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_fan()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .render_pass(Subpass::from(surface.render_pass.clone(), 0).unwrap())
-                .build(device.clone())
-                .unwrap(),
-        );
+        let pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
 
         let mut surfaces = HashMap::new();
 
         surfaces.insert(surface.surface.window().id(), surface);
         surfaces.insert(surface2.surface.window().id(), surface2);
 
-        (CoreState {
+        Ok((CoreState {
             instance,
             physical_index,
             queue,
@@ -110,22 +96,17 @@ impl CoreState {
             pipeline,
             surfaces,
         },
-        event_loop)
+        event_loop))
     }
 
-    pub fn draw(&mut self, surface_id: WindowId) {
+    pub fn draw(&mut self, surface_id: WindowId) -> Result<()> {
         let mut surface = self.surfaces.get_mut(&surface_id).unwrap();
 
         surface.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         if surface.recreate_swapchain {
             let dimensions: [u32; 2] = surface.surface.window().inner_size().into();
-            let (new_swapchain, new_images) =
-                match surface.swapchain.recreate_with_dimensions(dimensions) {
-                    Ok(r) => r,
-                    Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                };
+            let (new_swapchain, new_images) = surface.swapchain.recreate_with_dimensions(dimensions)?;
 
             surface.swapchain = new_swapchain;
             surface.framebuffers = window_size_dependent_setup(
@@ -141,9 +122,9 @@ impl CoreState {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     surface.recreate_swapchain = true;
-                    return;
+                    return Ok(());
                 }
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                Err(e) => return Err(CoreError::from(e)),
             };
 
         if suboptimal {
@@ -153,29 +134,27 @@ impl CoreState {
         let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
             self.device.clone(),
             self.queue.family(),
-        )
-        .unwrap();
+        )?;
 
         surface.widget.draw(
             &mut builder, 
             &self.buffer_pool, 
             surface.framebuffers[image_num].clone(), 
-            self.pipeline.clone(),
+            self.pipeline.shape_fill.clone(),
             &surface.dynamic_state,
-        );
+        )?;
     
         builder
             .end_render_pass()
             .unwrap();
     
-        let command_buffer = builder.build().unwrap();
+        let command_buffer = builder.build()?;
     
         let future = surface.previous_frame_end
             .take()
             .unwrap()
             .join(acquire_future)
-            .then_execute(self.queue.clone(), command_buffer)
-            .unwrap()
+            .then_execute(self.queue.clone(), command_buffer)?
             .then_swapchain_present(self.queue.clone(), surface.swapchain.clone(), image_num)
             .then_signal_fence_and_flush();
     
@@ -187,12 +166,14 @@ impl CoreState {
                 surface.recreate_swapchain = true;
                 surface.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
-            Err(_) => {
+            Err(e) => {
                 surface.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
     
-                panic!("Failed to flush future");
+                return Err(CoreError::from(e))
             }
         }
+
+        Ok(())
     }
 }
 
@@ -212,21 +193,20 @@ pub struct CoreSurface {
 }
 
 impl CoreSurface {
-    fn new(physical: &PhysicalDevice, device: Arc<Device>, queue: Arc<Queue>, event_loop: &EventLoop<()>, instance: Arc<Instance>, config: WidgetConfig) -> Result<CoreSurface, &'static str> {
-        let widget = Widget::new(config).unwrap();
+    fn new(physical: &PhysicalDevice, device: Arc<Device>, queue: Arc<Queue>, event_loop: &EventLoop<()>, instance: Arc<Instance>, config: WidgetConfig) -> Result<CoreSurface> {
+        let widget = Widget::new(config)?;
 
         let surface = WindowBuilder::new()
         .with_inner_size(LogicalSize::new(widget.width, widget.height))
         .with_decorations(false)    
         .with_transparent(true)
         .with_resizable(false)
-        .build_vk_surface(&event_loop, instance)
-        .unwrap();
+        .build_vk_surface(&event_loop, instance)?;
 
         surface.window().set_outer_position(LogicalPosition::new(widget.position.x(), widget.position.y()));
 
         let (swapchain, images) = {
-            let caps = surface.capabilities(*physical).unwrap();
+            let caps = surface.capabilities(*physical)?;
 
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
@@ -249,8 +229,7 @@ impl CoreSurface {
                 FullscreenExclusive::Default,
                 true,
                 ColorSpace::SrgbNonLinear,
-            )
-            .unwrap()
+            )?
         };
 
         let render_pass = Arc::new(
@@ -268,8 +247,7 @@ impl CoreSurface {
                     color: [color],
                     depth_stencil: {}
                 }
-            )
-            .unwrap(),
+            )?,
         );
 
         let mut dynamic_state = DynamicState {
@@ -306,6 +284,11 @@ impl CoreSurface {
     }
 }
 
+pub struct ShapesPipeline {
+    pub shape_fill: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pub shape_line: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+}
+
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -317,5 +300,32 @@ mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
         path: "src/bin/shaders/frag.spv"
+    }
+}
+
+impl ShapesPipeline {
+    pub fn new(device: Arc<Device>, render_pass: Arc<dyn RenderPassAbstract + Send + Sync>) -> Result<ShapesPipeline> {
+        Ok(ShapesPipeline {
+            shape_fill: Arc::new(
+                GraphicsPipeline::start()
+                    .vertex_input_single_buffer::<Vector>()
+                    .vertex_shader(vs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
+                    .triangle_fan()
+                    .viewports_dynamic_scissors_irrelevant(1)
+                    .fragment_shader(fs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
+                    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+                    .build(device.clone())?,
+            ),
+            shape_line: Arc::new(
+                GraphicsPipeline::start()
+                    .vertex_input_single_buffer::<Vector>()
+                    .vertex_shader(vs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
+                    .triangle_fan()
+                    .viewports_dynamic_scissors_irrelevant(1)
+                    .fragment_shader(fs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
+                    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+                    .build(device.clone())?,
+            ),
+        })
     }
 }

@@ -1,4 +1,5 @@
-use crate::decoder::{WidgetConfig, DecoderError, Shapes, Tools};
+use crate::decoder::{WidgetConfig, Shapes, Tools};
+use crate::error::{CoreError, Result};
 use crate::geometry::*;
 use crate::util::Color;
 use crate::tools::Button;
@@ -26,7 +27,7 @@ pub struct Widget {
 }
 
 impl Widget {
-    pub fn new(config: WidgetConfig) -> Result<Widget, DecoderError> {
+    pub fn new(config: WidgetConfig) -> Result<Widget> {
         let mut widget = Widget{
             width: config.width,
             height: config.height,
@@ -49,7 +50,7 @@ impl Widget {
                     match s.shape_type {
                         Shapes::Triangle => {
                             if s.shape.len() != 6 {
-                                return Err(DecoderError::InvalidShapeFormat);
+                                return Err(CoreError::InvalidShapeFormat);
                             };
 
                             let triangle = Triangle::new(
@@ -70,7 +71,7 @@ impl Widget {
                         },
                         Shapes::Rectangle => {
                             if s.shape.len() != 4 {
-                                return Err(DecoderError::InvalidShapeFormat);
+                                return Err(CoreError::InvalidShapeFormat);
                             };
 
                             let rectangle = Rectangle::new(
@@ -100,7 +101,7 @@ impl Widget {
                     match t.tool_type {
                         Tools::Button => {
                             if t.shape.len() != 4 {
-                                return Err(DecoderError::InvalidShapeFormat);
+                                return Err(CoreError::InvalidShapeFormat);
                             };
 
                             let rectangle = Rectangle::new(
@@ -115,7 +116,7 @@ impl Widget {
                                          Some(a) => {
                                             let button = Button::new(
                                                 rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
-                                                Some(Action::new(a, None)),
+                                                Some(Action::new(a)),
                                             );
 
                                             widget.buttons.push(button);
@@ -129,15 +130,13 @@ impl Widget {
                                             widget.buttons.push(button);
                                          }
                                      }
-                                   
-                                    //widget.buttons.push(rectangle.color(Color::from_hex(hex::decode(&c[1..])?)));
                                 },
                                 None => {
                                     match t.action {
                                         Some(a) => {
                                            let button = Button::new(
                                                rectangle,
-                                               Some(Action::new(a, None)),
+                                               Some(Action::new(a)),
                                            );
 
                                            widget.buttons.push(button);
@@ -171,18 +170,35 @@ impl Widget {
         frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         dynamic_state: &DynamicState,
-    ) {
+    ) -> Result<()> {
 
         builder
-            .begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])
-            .unwrap();
+            .begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])?;
 
         for shape in &self.shapes {
-            shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state);
+            let buffer = Arc::new(buffer_pool.chunk(shape.to_vec().clone())?);
+
+            builder.draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )?;
         }
 
         for button in &self.buttons {
-            button.shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state);
+            let buffer = Arc::new(buffer_pool.chunk(button.shape.to_vec().clone())?);
+
+            builder.draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )?;
         }
+
+        Ok(())
     }
 }

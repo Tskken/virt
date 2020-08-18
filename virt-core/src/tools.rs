@@ -1,5 +1,6 @@
 use crate::geometry::{Shape, Vector};
 use crate::action::Action;
+use crate::error::Result;
 
 #[derive(Debug)]
 pub struct Button {
@@ -16,14 +17,16 @@ impl Button {
         }
     }
 
-    pub fn clicked(&mut self, v: Vector) {
+    pub fn clicked(&mut self, v: Vector) -> Result<()> {
         match &mut self.action {
             Some(a) => {
                 if self.shape.contains(v) {
-                    a.run().unwrap();
+                    a.run()?;
                 }
             },
             None => {}
         }
+
+        Ok(())
     }
 }
