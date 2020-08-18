@@ -88,7 +88,7 @@ impl CoreState {
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vector>()
                 .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
+                .triangle_fan()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
                 .render_pass(Subpass::from(surface.render_pass.clone(), 0).unwrap())
@@ -149,29 +149,22 @@ impl CoreState {
         if suboptimal {
             surface.recreate_swapchain = true;
         }
-
-
-        let clear_values = vec![surface.widget.color.into()];
-    
-        let buffer = Arc::new(self.buffer_pool.chunk(surface.widget.to_vec().clone()).unwrap());
     
         let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
             self.device.clone(),
             self.queue.family(),
         )
         .unwrap();
+
+        surface.widget.draw(
+            &mut builder, 
+            &self.buffer_pool, 
+            surface.framebuffers[image_num].clone(), 
+            self.pipeline.clone(),
+            &surface.dynamic_state,
+        );
     
         builder
-            .begin_render_pass(surface.framebuffers[image_num].clone(), false, clear_values)
-            .unwrap()
-            .draw(
-                self.pipeline.clone(),
-                &surface.dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )
-            .unwrap()
             .end_render_pass()
             .unwrap();
     
@@ -316,13 +309,13 @@ impl CoreSurface {
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/bin/shaders/vert.vs"
+        path: "src/bin/shaders/vert.spv"
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/bin/shaders/frag.fs"
+        path: "src/bin/shaders/frag.spv"
     }
 }

@@ -2,6 +2,13 @@ use std::ops::{Add, Sub, Mul, Div};
 use crate::util::Color;
 use core::fmt::Debug;
 
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::buffer::CpuBufferPool;
+use vulkano::pipeline::GraphicsPipelineAbstract;
+
+use std::sync::Arc;
+
+
 pub trait Shape : Debug {
     fn center(&self) -> Vector;
     fn area(&self) -> f32;
@@ -9,6 +16,13 @@ pub trait Shape : Debug {
     fn contains(&self, p: Vector) -> bool;
     fn project(&self, width: f32, height: f32) -> Box<dyn Shape>;
     fn to_vec(&self) -> Vec<Vector>;
+    fn draw(
+        &self,
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        dynamic_state: &DynamicState,
+    );
 }
 
 /// Rectangle is your standard 2D rectangular shape.
@@ -68,13 +82,33 @@ impl Shape for Rectangle {
 
     fn to_vec(&self) -> Vec<Vector> {
         vec![
-            Vector::new(self.min.x(), self.min.y()).color(self.max.color),
+            self.min,
             Vector::new(self.min.x(), self.max.y()).color(self.max.color),
-            Vector::new(self.max.x(), self.max.y()).color(self.max.color),
-            Vector::new(self.min.x(), self.min.y()).color(self.max.color),
+            self.max,
+            self.min,
             Vector::new(self.max.x(), self.min.y()).color(self.max.color),
-            Vector::new(self.max.x(), self.max.y()).color(self.max.color),
+            self.max,
         ]
+    }
+
+    fn draw(
+        &self, 
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        dynamic_state: &DynamicState,
+    ) {
+        let buffer = Arc::new(buffer_pool.chunk(self.to_vec().clone()).unwrap());
+
+        builder
+            .draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )
+            .unwrap();
     }
 }
 
@@ -266,6 +300,25 @@ impl Shape for Triangle {
             self.b,
             self.c,
         ]
+    }
+
+    fn draw(
+        &self, 
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        dynamic_state: &DynamicState,
+    ) {
+        let buffer = Arc::new(buffer_pool.chunk(self.to_vec().clone()).unwrap());
+
+        builder.draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )
+            .unwrap();
     }
 }
 

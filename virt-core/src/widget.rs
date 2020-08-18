@@ -4,6 +4,13 @@ use crate::util::Color;
 use crate::tools::Button;
 use crate::action::Action;
 
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::buffer::CpuBufferPool;
+use vulkano::framebuffer::FramebufferAbstract;
+use vulkano::pipeline::GraphicsPipelineAbstract;
+
+use std::sync::Arc;
+
 #[derive(Debug)]
 pub struct Widget {
     pub width: u32,
@@ -157,17 +164,25 @@ impl Widget {
         Ok(widget)
     }
 
-    pub fn to_vec(&self) -> Vec<Vector> {
-        let mut d: Vec<Vector> = Vec::new();
+    pub fn draw(
+        &self,
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        dynamic_state: &DynamicState,
+    ) {
+
+        builder
+            .begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])
+            .unwrap();
 
         for shape in &self.shapes {
-            d.append(&mut shape.to_vec());
+            shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state);
         }
 
         for button in &self.buttons {
-            d.append(&mut button.shape.to_vec());
+            button.shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state);
         }
-
-        d
     }
 }

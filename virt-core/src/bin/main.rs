@@ -65,7 +65,7 @@ fn main() {
                 },
                 ..
             } => {
-                if state == ElementState::Pressed && button == MouseButton::Left {
+                if state == ElementState::Released && button == MouseButton::Left {
                     let surface = core_state.surfaces.get_mut(&window_id).unwrap();
                     match surface.cur_mouse_pos {
                         Some(val) => {
