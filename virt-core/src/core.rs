@@ -1,10 +1,10 @@
 use vulkano::buffer::{CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions, Queue};
-use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::image::{ImageUsage};
 use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
-use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
+
 use vulkano::swapchain;
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain, Surface
@@ -26,6 +26,7 @@ use crate::decoder;
 use crate::widget::Widget;
 use crate::decoder::WidgetConfig;
 use crate::error::{CoreError, Result};
+use crate::pipelines::ShapesPipeline;
 
 pub struct CoreState {
     pub instance: Arc<Instance>,
@@ -36,7 +37,7 @@ pub struct CoreState {
 
     pub buffer_pool: CpuBufferPool<Vector>,
 
-    pub pipeline: ShapesPipeline,
+    pub shapes_pipeline: ShapesPipeline,
 
     pub surfaces: HashMap<WindowId, CoreSurface>,
 }
@@ -80,7 +81,7 @@ impl CoreState {
 
         let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
 
-        let pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
+        let shapes_pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
 
         let mut surfaces = HashMap::new();
 
@@ -93,7 +94,7 @@ impl CoreState {
             queue,
             device,
             buffer_pool,
-            pipeline,
+            shapes_pipeline,
             surfaces,
         },
         event_loop))
@@ -140,7 +141,7 @@ impl CoreState {
             &mut builder, 
             &self.buffer_pool, 
             surface.framebuffers[image_num].clone(), 
-            self.pipeline.shape_fill.clone(),
+            &self.shapes_pipeline,
             &surface.dynamic_state,
         )?;
     
@@ -281,51 +282,5 @@ impl CoreSurface {
                 las_mouse_pos: None,
             }
         )
-    }
-}
-
-pub struct ShapesPipeline {
-    pub shape_fill: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    pub shape_line: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-}
-
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        path: "src/bin/shaders/vert.spv"
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        path: "src/bin/shaders/frag.spv"
-    }
-}
-
-impl ShapesPipeline {
-    pub fn new(device: Arc<Device>, render_pass: Arc<dyn RenderPassAbstract + Send + Sync>) -> Result<ShapesPipeline> {
-        Ok(ShapesPipeline {
-            shape_fill: Arc::new(
-                GraphicsPipeline::start()
-                    .vertex_input_single_buffer::<Vector>()
-                    .vertex_shader(vs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
-                    .triangle_fan()
-                    .viewports_dynamic_scissors_irrelevant(1)
-                    .fragment_shader(fs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
-                    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                    .build(device.clone())?,
-            ),
-            shape_line: Arc::new(
-                GraphicsPipeline::start()
-                    .vertex_input_single_buffer::<Vector>()
-                    .vertex_shader(vs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
-                    .triangle_fan()
-                    .viewports_dynamic_scissors_irrelevant(1)
-                    .fragment_shader(fs::Shader::load(device.clone()).unwrap().main_entry_point(), ())
-                    .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-                    .build(device.clone())?,
-            ),
-        })
     }
 }

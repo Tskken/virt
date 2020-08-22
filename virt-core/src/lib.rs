@@ -8,3 +8,4 @@ pub mod widget;
 pub mod action;
 pub mod tools;
 pub mod error;
+pub mod pipelines;

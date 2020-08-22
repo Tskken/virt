@@ -22,6 +22,7 @@ pub enum CoreError {
     ValidationFail,
     InvalidShapeFormat,
     NoSupportedPhysicalDevice,
+    Unimplemented,
     TomlError(de::Error),
     IoError(io::Error),
     FromHexError(FromHexError),
@@ -52,6 +53,8 @@ impl fmt::Display for CoreError {
                 write!(f, "the provided values to shape are incorrect"),
             CoreError::NoSupportedPhysicalDevice =>
                 write!(f, "no supported physical device found"),
+            CoreError::Unimplemented =>
+                write!(f, "function is unimplemented"),
             CoreError::TomlError(ref e) => e.fmt(f),
             CoreError::IoError(ref e) => e.fmt(f),
             CoreError::FromHexError(ref e) => e.fmt(f),
@@ -81,6 +84,7 @@ impl error::Error for CoreError {
             CoreError::ValidationFail => None,
             CoreError::InvalidShapeFormat => None,
             CoreError::NoSupportedPhysicalDevice => None,
+            CoreError::Unimplemented => None,
             CoreError::TomlError(ref e) => Some(e),
             CoreError::IoError(ref e) => Some(e),
             CoreError::FromHexError(ref e) => Some(e),

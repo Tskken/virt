@@ -1,6 +1,20 @@
 use std::ops::{Add, Sub, Mul, Div};
-use crate::util::Color;
 use core::fmt::Debug;
+
+use crate::util::Color;
+use crate::error::{CoreError, Result};
+use crate::pipelines::ShapesPipeline;
+
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::buffer::CpuBufferPool;
+
+use std::sync::Arc;
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ShapeFormat {
+    Fill,
+    Line,
+}
 
 pub trait Shape : Debug {
     fn center(&self) -> Vector;
@@ -8,7 +22,12 @@ pub trait Shape : Debug {
     fn color(&self, color: [f32; 4]) -> Box<dyn Shape>;
     fn contains(&self, p: Vector) -> bool;
     fn project(&self, width: f32, height: f32) -> Box<dyn Shape>;
-    fn to_vec(&self) -> Vec<Vector>;
+    fn draw(&self,
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        shapes_pipeline: &ShapesPipeline,
+        dynamic_state: &DynamicState
+    ) -> Result<()>;
 }
 
 /// Rectangle is your standard 2D rectangular shape.
@@ -16,6 +35,8 @@ pub trait Shape : Debug {
 pub struct Rectangle {
     pub min: Vector,
     pub max: Vector,
+
+    pub format: ShapeFormat,
 }
 
 impl Rectangle {
@@ -23,6 +44,7 @@ impl Rectangle {
         Rectangle {
             min,
             max,
+            format: ShapeFormat::Line,
         }
     }
 
@@ -34,8 +56,25 @@ impl Rectangle {
         self.max.y() - self.min.y()
     }
 
-    pub fn area(self) -> f32 {
-        self.width() * self.height()
+    fn to_fill_vec(&self) -> Vec<Vector> {
+        vec![
+            self.min,
+            Vector::new(self.min.x(), self.max.y()).color(self.max.color),
+            self.max,
+            self.min,
+            Vector::new(self.max.x(), self.min.y()).color(self.max.color),
+            self.max,
+        ]
+    }
+
+    fn to_line_vec(&self) -> Vec<Vector> {
+        vec![
+            self.min,
+            Vector::new(self.max.x(), self.min.y()).color(self.max.color),
+            self.max,
+            Vector::new(self.min.x(), self.max.y()).color(self.max.color),
+            self.min,
+        ]
     }
 }
 
@@ -44,6 +83,7 @@ impl Shape for Rectangle {
         Box::new(Rectangle {
             min: self.min.color(color),
             max: self.max.color(color),
+            format: self.format,
         })
     }
 
@@ -63,18 +103,41 @@ impl Shape for Rectangle {
         Box::new(Rectangle {
             min: self.min.project(width, height),
             max: self.max.project(width, height),
+            format: self.format,
         })
     }
 
-    fn to_vec(&self) -> Vec<Vector> {
-        vec![
-            self.min,
-            Vector::new(self.min.x(), self.max.y()).color(self.max.color),
-            self.max,
-            self.min,
-            Vector::new(self.max.x(), self.min.y()).color(self.max.color),
-            self.max,
-        ]
+    fn draw(&self, 
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        shapes_pipeline: &ShapesPipeline,
+        dynamic_state: &DynamicState,) -> Result<()>{
+        match self.format {
+            ShapeFormat::Fill => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+
+                builder.draw(
+                    shapes_pipeline.default_fill.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    (),
+                )?;
+            },
+            ShapeFormat::Line => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+
+                builder.draw(
+                    shapes_pipeline.default_line.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    (),
+                )?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -85,6 +148,7 @@ impl Add<Rectangle> for Rectangle {
         Rectangle {
             min: self.min + v.min,
             max: self.max + v.max,
+            format: self.format,
         }
     }
 }
@@ -96,6 +160,7 @@ impl Add<Vector> for Rectangle {
         Rectangle {
             min: self.min + v,
             max: self.max + v,
+            format: self.format,
         }
     }
 }
@@ -107,6 +172,7 @@ impl Add<f32> for Rectangle {
         Rectangle {
             min: self.min + v,
             max: self.max + v,
+            format: self.format,
         }
     }
 }
@@ -118,6 +184,7 @@ impl Sub<Rectangle> for Rectangle {
         Rectangle {
             min: self.min - v.min,
             max: self.max - v.max,
+            format: self.format,
         }
     }
 }
@@ -129,6 +196,7 @@ impl Sub<Vector> for Rectangle {
         Rectangle {
             min: self.min - v,
             max: self.max - v,
+            format: self.format,
         }
     }
 }
@@ -140,6 +208,7 @@ impl Sub<f32> for Rectangle {
         Rectangle {
             min: self.min - v,
             max: self.max - v,
+            format: self.format,
         }
     }
 }
@@ -151,6 +220,7 @@ impl Mul<Rectangle> for Rectangle {
         Rectangle {
             min: self.min * v.min,
             max: self.max * v.max,
+            format: self.format,
         }
     }
 }
@@ -162,6 +232,7 @@ impl Mul<Vector> for Rectangle {
         Rectangle {
             min: self.min * v,
             max: self.max * v,
+            format: self.format,
         }
     }
 }
@@ -173,6 +244,7 @@ impl Mul<f32> for Rectangle {
         Rectangle {
             min: self.min * v,
             max: self.max * v,
+            format: self.format,
         }
     }
 }
@@ -184,6 +256,7 @@ impl Div<Rectangle> for Rectangle {
         Rectangle {
             min: self.min / v.min,
             max: self.max / v.max,
+            format: self.format,
         }
     }
 }
@@ -195,6 +268,7 @@ impl Div<Vector> for Rectangle {
         Rectangle {
             min: self.min / v,
             max: self.max / v,
+            format: self.format,
         }
     }
 }
@@ -206,6 +280,7 @@ impl Div<f32> for Rectangle {
         Rectangle {
             min: self.min / v,
             max: self.max / v,
+            format: self.format,
         }
     }
 }
@@ -215,6 +290,8 @@ pub struct Triangle {
     pub a: Vector,
     pub b: Vector,
     pub c: Vector,
+
+    pub format: ShapeFormat,
 }
 
 impl Triangle {
@@ -223,7 +300,25 @@ impl Triangle {
             a,
             b,
             c,
+            format: ShapeFormat::Line,
         }
+    }
+
+    fn to_fill_vec(&self) -> Vec<Vector> {
+        vec![
+            self.a,
+            self.b,
+            self.c,
+        ]
+    }
+
+    fn to_line_vec(&self) -> Vec<Vector> {
+        vec![
+            self.a,
+            self.b,
+            self.c,
+            self.a,
+        ]
     }
 }
 
@@ -245,6 +340,7 @@ impl Shape for Triangle {
             a: self.a.color(color),
             b: self.b.color(color),
             c: self.c.color(color),
+            format: self.format,
         })
     }
 
@@ -257,15 +353,43 @@ impl Shape for Triangle {
             a: self.a.project(width, height),
             b: self.b.project(width, height),
             c: self.c.project(width, height),
+            format: self.format,
         })
     }
 
-    fn to_vec(&self) -> Vec<Vector> {
-        vec![
-            self.a,
-            self.b,
-            self.c,
-        ]
+    fn draw(&self,
+        builder: &mut AutoCommandBufferBuilder, 
+        buffer_pool: &CpuBufferPool<Vector>,
+        shapes_pipeline: &ShapesPipeline,
+        dynamic_state: &DynamicState
+    ) -> Result<()> {
+        match self.format {
+            ShapeFormat::Fill => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+
+                builder.draw(
+                    shapes_pipeline.default_fill.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    (),
+                )?;
+            },
+            ShapeFormat::Line => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+
+                builder.draw(
+                    shapes_pipeline.default_line.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    (),
+                )?;
+            }
+        }
+        
+
+        Ok(())
     }
 }
 
@@ -277,6 +401,7 @@ impl Add<Triangle> for Triangle {
             a: self.a + v.a,
             b: self.b + v.b,
             c: self.c + v.c,
+            format: self.format,
         }
     }
 }
@@ -289,6 +414,7 @@ impl Add<f32> for Triangle {
             a: self.a + v,
             b: self.b + v,
             c: self.c + v,
+            format: self.format,
         }
     }
 }
@@ -301,6 +427,7 @@ impl Sub<Triangle> for Triangle {
             a: self.a - v.a,
             b: self.b - v.b,
             c: self.c - v.c,
+            format: self.format,
         }
     }
 }
@@ -313,6 +440,7 @@ impl Sub<f32> for Triangle {
             a: self.a - v,
             b: self.b - v,
             c: self.c - v,
+            format: self.format,
         }
     }
 }
@@ -325,6 +453,7 @@ impl Mul<Triangle> for Triangle {
             a: self.a * v.a,
             b: self.b * v.b,
             c: self.c * v.c,
+            format: self.format,
         }
     }
 }
@@ -337,6 +466,7 @@ impl Mul<f32> for Triangle {
             a: self.a * v,
             b: self.b * v,
             c: self.c * v,
+            format: self.format,
         }
     }
 }
@@ -349,6 +479,7 @@ impl Div<Triangle> for Triangle {
             a: self.a / v.a,
             b: self.b / v.b,
             c: self.c / v.c,
+            format: self.format,
         }
     }
 }
@@ -361,6 +492,7 @@ impl Div<f32> for Triangle {
             a: self.a / v,
             b: self.b / v,
             c: self.c / v,
+            format: self.format,
         }
     }
 }
@@ -371,6 +503,7 @@ impl From<[Vector; 3]> for Triangle {
             a: data[0],
             b: data[1],
             c: data[2],
+            format: ShapeFormat::Fill,
         }
     }
 }
@@ -417,8 +550,13 @@ impl Shape for Circle {
         })
     }
 
-    fn to_vec(&self) -> Vec<Vector> {
-        Vec::new()
+    fn draw(&self,
+        _builder: &mut AutoCommandBufferBuilder, 
+        _buffer_pool: &CpuBufferPool<Vector>,
+        _shapes_pipeline: &ShapesPipeline,
+        _dynamic_state: &DynamicState
+    ) -> Result<()> {
+        Err(CoreError::Unimplemented)
     }
 }
 

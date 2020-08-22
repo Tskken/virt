@@ -4,11 +4,11 @@ use crate::geometry::*;
 use crate::util::Color;
 use crate::tools::Button;
 use crate::action::Action;
+use crate::pipelines::ShapesPipeline;
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
 use vulkano::framebuffer::FramebufferAbstract;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 
 use std::sync::Arc;
 
@@ -168,35 +168,18 @@ impl Widget {
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
         frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        shapes_pipeline: &ShapesPipeline,
         dynamic_state: &DynamicState,
     ) -> Result<()> {
 
-        builder
-            .begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])?;
+        builder.begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])?;
 
         for shape in &self.shapes {
-            let buffer = Arc::new(buffer_pool.chunk(shape.to_vec().clone())?);
-
-            builder.draw(
-                pipeline.clone(),
-                &dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )?;
+            shape.draw(builder, buffer_pool, shapes_pipeline, dynamic_state)?;
         }
 
         for button in &self.buttons {
-            let buffer = Arc::new(buffer_pool.chunk(button.shape.to_vec().clone())?);
-
-            builder.draw(
-                pipeline.clone(),
-                &dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )?;
+            button.shape.draw(builder, buffer_pool, shapes_pipeline, dynamic_state)?;
         }
 
         Ok(())
