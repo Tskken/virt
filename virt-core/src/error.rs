@@ -13,6 +13,7 @@ use vulkano::sync::FlushError;
 use vulkano_win::CreationError;
 use vulkano::pipeline::GraphicsPipelineCreationError;
 use vulkano::memory::DeviceMemoryAllocError;
+use glob::{PatternError, GlobError};
 
 
 pub type Result<T> = std::result::Result<T, CoreError>;
@@ -41,7 +42,9 @@ pub enum CoreError {
     GraphicsPipelineCreationError(GraphicsPipelineCreationError),
     BeginRenderPassError(BeginRenderPassError),
     DrawError(DrawError),
-    DeviceMemoryAllocError(DeviceMemoryAllocError)
+    DeviceMemoryAllocError(DeviceMemoryAllocError),
+    PatternError(PatternError),
+    GlobError(GlobError),
 }
 
 impl fmt::Display for CoreError {
@@ -74,6 +77,8 @@ impl fmt::Display for CoreError {
             CoreError::BeginRenderPassError(ref e) => e.fmt(f),
             CoreError::DrawError(ref e) => e.fmt(f),
             CoreError::DeviceMemoryAllocError(ref e) => e.fmt(f),
+            CoreError::PatternError(ref e) => e.fmt(f),
+            CoreError::GlobError(ref e) => e.fmt(f),
         }
     }
 }
@@ -104,6 +109,8 @@ impl error::Error for CoreError {
             CoreError::BeginRenderPassError(ref e) => Some(e),
             CoreError::DrawError(ref e) => Some(e),
             CoreError::DeviceMemoryAllocError(ref e) => Some(e),
+            CoreError::PatternError(ref e) => Some(e),
+            CoreError::GlobError(ref e) => Some(e),
         }
     }
 }
@@ -219,6 +226,18 @@ impl From<DrawError> for CoreError {
 impl From<DeviceMemoryAllocError> for CoreError {
     fn from(err: DeviceMemoryAllocError) -> CoreError {
         CoreError::DeviceMemoryAllocError(err)
+    }
+}
+
+impl From<PatternError> for CoreError {
+    fn from(err: PatternError) -> CoreError {
+        CoreError::PatternError(err)
+    }
+}
+
+impl From<GlobError> for CoreError {
+    fn from(err: GlobError) -> CoreError {
+        CoreError::GlobError(err)
     }
 }
 

@@ -4,6 +4,7 @@ use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::image::{ImageUsage};
 use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
+use vulkano::pipeline::GraphicsPipelineAbstract;
 
 use vulkano::swapchain;
 use vulkano::swapchain::{
@@ -26,7 +27,9 @@ use crate::decoder;
 use crate::widget::Widget;
 use crate::decoder::WidgetConfig;
 use crate::error::{CoreError, Result};
-use crate::pipelines::ShapesPipeline;
+use crate::pipelines::new_default;
+
+
 
 pub struct CoreState {
     pub instance: Arc<Instance>,
@@ -36,8 +39,6 @@ pub struct CoreState {
     pub device: Arc<Device>,
 
     pub buffer_pool: CpuBufferPool<Vector>,
-
-    pub shapes_pipeline: ShapesPipeline,
 
     pub surfaces: HashMap<WindowId, CoreSurface>,
 }
@@ -69,24 +70,31 @@ impl CoreState {
 
         let queue = queues.next().unwrap();
 
-        let widget_config = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets.toml")?;
+        let cfg = decoder::CoreConfig::new()?;
 
-        let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config)?;
+        let mut surfaces = HashMap::new();
 
-        let widget_config2 = decoder::decode("C:/Users/dillb/Documents/Rust_Projects/virt/virt-core/src/bin/widget_files/all_widgets2.toml")?;
+        let widget_paths = decoder::widget_paths(cfg)?;
 
-        let surface2 = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config2)?;
+        for path in widget_paths {
+            match path {
+                Ok(p) => {
+                    println!("{:?}", p.display());
+                    let widget_config = decoder::decode(p.to_str().unwrap())?;
+
+                    let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config)?;
+
+                    surfaces.insert(surface.surface.window().id(), surface);
+                },
+                Err(e) => return Err(CoreError::from(e)),
+            }
+        }
 
         vulkano::impl_vertex!(Vector, position, color);
 
         let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
 
-        let shapes_pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
-
-        let mut surfaces = HashMap::new();
-
-        surfaces.insert(surface.surface.window().id(), surface);
-        surfaces.insert(surface2.surface.window().id(), surface2);
+        //let shapes_pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
 
         Ok((CoreState {
             instance,
@@ -94,7 +102,6 @@ impl CoreState {
             queue,
             device,
             buffer_pool,
-            shapes_pipeline,
             surfaces,
         },
         event_loop))
@@ -141,7 +148,7 @@ impl CoreState {
             &mut builder, 
             &self.buffer_pool, 
             surface.framebuffers[image_num].clone(), 
-            &self.shapes_pipeline,
+            surface.pipeline.clone(),
             &surface.dynamic_state,
         )?;
     
@@ -186,6 +193,7 @@ pub struct CoreSurface {
     pub recreate_swapchain: bool,
     pub previous_frame_end: Option<Box<(dyn GpuFuture)>>,
     pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    pub pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     
     pub widget: Widget,
 
@@ -263,6 +271,8 @@ impl CoreSurface {
         let framebuffers =
             window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
+        let pipeline = new_default(device.clone(), render_pass.clone())?;
+
         let recreate_swapchain = false;
 
 
@@ -277,6 +287,7 @@ impl CoreSurface {
                 recreate_swapchain,
                 previous_frame_end,
                 framebuffers,
+                pipeline,
                 widget: widget,
                 cur_mouse_pos: None,
                 las_mouse_pos: None,

@@ -3,10 +3,10 @@ use core::fmt::Debug;
 
 use crate::util::Color;
 use crate::error::{CoreError, Result};
-use crate::pipelines::ShapesPipeline;
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
+use vulkano::pipeline::GraphicsPipelineAbstract;
 
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ pub trait Shape : Debug {
     fn draw(&self,
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        shapes_pipeline: &ShapesPipeline,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         dynamic_state: &DynamicState
     ) -> Result<()>;
 }
@@ -110,32 +110,34 @@ impl Shape for Rectangle {
     fn draw(&self, 
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        shapes_pipeline: &ShapesPipeline,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         dynamic_state: &DynamicState,) -> Result<()>{
-        match self.format {
-            ShapeFormat::Fill => {
-                let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+            let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
 
-                builder.draw(
-                    shapes_pipeline.default_fill.clone(),
-                    &dynamic_state,
-                    vec![buffer],
-                    (),
-                    (),
-                )?;
-            },
-            ShapeFormat::Line => {
-                let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+            builder.draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vec![buffer],
+                (),
+                (),
+            )?;
 
-                builder.draw(
-                    shapes_pipeline.default_line.clone(),
-                    &dynamic_state,
-                    vec![buffer],
-                    (),
-                    (),
-                )?;
-            }
-        }
+        // match self.format {
+        //     ShapeFormat::Fill => {
+                
+        //     },
+        //     ShapeFormat::Line => {
+        //         let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+
+        //         builder.draw(
+        //             pipeline.clone(),
+        //             &dynamic_state,
+        //             vec![buffer],
+        //             (),
+        //             (),
+        //         )?;
+        //     }
+        // }
 
         Ok(())
     }
@@ -360,33 +362,35 @@ impl Shape for Triangle {
     fn draw(&self,
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        shapes_pipeline: &ShapesPipeline,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         dynamic_state: &DynamicState
     ) -> Result<()> {
-        match self.format {
-            ShapeFormat::Fill => {
-                let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+        let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
 
-                builder.draw(
-                    shapes_pipeline.default_fill.clone(),
-                    &dynamic_state,
-                    vec![buffer],
-                    (),
-                    (),
-                )?;
-            },
-            ShapeFormat::Line => {
-                let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+        builder.draw(
+            pipeline.clone(),
+            &dynamic_state,
+            vec![buffer],
+            (),
+            (),
+        )?;
 
-                builder.draw(
-                    shapes_pipeline.default_line.clone(),
-                    &dynamic_state,
-                    vec![buffer],
-                    (),
-                    (),
-                )?;
-            }
-        }
+        // match self.format {
+        //     ShapeFormat::Fill => {
+
+        //     },
+        //     ShapeFormat::Line => {
+        //         let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+
+        //         builder.draw(
+        //             shapes_pipeline.default_line.clone(),
+        //             &dynamic_state,
+        //             vec![buffer],
+        //             (),
+        //             (),
+        //         )?;
+        //     }
+        // }
         
 
         Ok(())
@@ -553,7 +557,7 @@ impl Shape for Circle {
     fn draw(&self,
         _builder: &mut AutoCommandBufferBuilder, 
         _buffer_pool: &CpuBufferPool<Vector>,
-        _shapes_pipeline: &ShapesPipeline,
+        _pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         _dynamic_state: &DynamicState
     ) -> Result<()> {
         Err(CoreError::Unimplemented)
