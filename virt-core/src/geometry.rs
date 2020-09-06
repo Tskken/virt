@@ -3,10 +3,11 @@ use core::fmt::Debug;
 
 use crate::util::Color;
 use crate::error::{CoreError, Result};
+use crate::pipelines::{ShapesPipeline, vs::ty::PushConstantData, vs};
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
-use vulkano::pipeline::GraphicsPipelineAbstract;
+//use vulkano::pipeline::GraphicsPipelineAbstract;
 
 use std::sync::Arc;
 
@@ -21,12 +22,13 @@ pub trait Shape : Debug {
     fn area(&self) -> f32;
     fn color(&self, color: [f32; 4]) -> Box<dyn Shape>;
     fn contains(&self, p: Vector) -> bool;
-    fn project(&self, width: f32, height: f32) -> Box<dyn Shape>;
+    //fn project(&self, width: f32, height: f32) -> Box<dyn Shape>;
     fn draw(&self,
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState
+        pipelines: &ShapesPipeline,
+        dynamic_state: &DynamicState,
+        res: Vector,
     ) -> Result<()>;
 }
 
@@ -44,16 +46,24 @@ impl Rectangle {
         Rectangle {
             min,
             max,
-            format: ShapeFormat::Line,
+            format: ShapeFormat::Fill,
         }
     }
 
-    fn width(self) -> f32 {
+    pub fn width(self) -> f32 {
         self.max.x() - self.min.x()
     }
 
-    fn height(self) -> f32 {
+    pub fn height(self) -> f32 {
         self.max.y() - self.min.y()
+    }
+
+    pub fn format(&self, format: ShapeFormat) -> Rectangle {
+        Rectangle {
+            min: self.min,
+            max: self.max,
+            format,
+        }    
     }
 
     fn to_fill_vec(&self) -> Vec<Vector> {
@@ -96,48 +106,60 @@ impl Shape for Rectangle {
     }
 
     fn contains(&self, p: Vector) -> bool {
-        !(p.position[0] < self.min.position[0] || p.position[0] > self.max.position[0] || p.position[1] > self.min.position[1] || p.position[1] < self.max.position[1])
+        !(p.position[0] < self.min.position[0] || p.position[0] > self.max.position[0] || p.position[1] < self.min.position[1] || p.position[1] > self.max.position[1])
     }
 
-    fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
-        Box::new(Rectangle {
-            min: self.min.project(width, height),
-            max: self.max.project(width, height),
-            format: self.format,
-        })
-    }
+    // fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
+    //     Box::new(Rectangle {
+    //         min: self.min.project(width, height),
+    //         max: self.max.project(width, height),
+    //         format: self.format,
+    //     })
+    // }
 
     fn draw(&self, 
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState,) -> Result<()>{
-            let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+        pipelines: &ShapesPipeline,
+        dynamic_state: &DynamicState,
+        res: Vector,
+    ) -> Result<()>{
+            match self.format {
+                ShapeFormat::Fill => {
+                    let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
 
-            builder.draw(
-                pipeline.clone(),
-                &dynamic_state,
-                vec![buffer],
-                (),
-                (),
-            )?;
+                    //let c = self.center();
 
-        // match self.format {
-        //     ShapeFormat::Fill => {
-                
-        //     },
-        //     ShapeFormat::Line => {
-        //         let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+                    let pc = vs::ty::PushConstantData {
+                        resolution: res.position,
+                    };
 
-        //         builder.draw(
-        //             pipeline.clone(),
-        //             &dynamic_state,
-        //             vec![buffer],
-        //             (),
-        //             (),
-        //         )?;
-        //     }
-        // }
+                    builder.draw(
+                        pipelines.default_fill.clone(),
+                        &dynamic_state,
+                        vec![buffer],
+                        (),
+                        pc,
+                    )?;
+                },
+                ShapeFormat::Line => {
+                    let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+
+                    //let c = self.center();
+
+                    let pc = vs::ty::PushConstantData {
+                        resolution: res.position,
+                    };
+
+                    builder.draw(
+                        pipelines.default_line.clone(),
+                        &dynamic_state,
+                        vec![buffer],
+                        (),
+                        pc,
+                    )?;
+                }
+            }
 
         Ok(())
     }
@@ -302,7 +324,7 @@ impl Triangle {
             a,
             b,
             c,
-            format: ShapeFormat::Line,
+            format: ShapeFormat::Fill,
         }
     }
 
@@ -350,47 +372,58 @@ impl Shape for Triangle {
         (self.a + self.b + self.c) / Vector::new(3f32, 3f32)
     }
 
-    fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
-        Box::new(Triangle {
-            a: self.a.project(width, height),
-            b: self.b.project(width, height),
-            c: self.c.project(width, height),
-            format: self.format,
-        })
-    }
+    // fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
+    //     Box::new(Triangle {
+    //         a: self.a.project(width, height),
+    //         b: self.b.project(width, height),
+    //         c: self.c.project(width, height),
+    //         format: self.format,
+    //     })
+    // }
 
     fn draw(&self,
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        dynamic_state: &DynamicState
+        pipelines: &ShapesPipeline,
+        dynamic_state: &DynamicState,
+        res: Vector,
     ) -> Result<()> {
-        let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
+        match self.format {
+            ShapeFormat::Fill => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_fill_vec().clone())?);
 
-        builder.draw(
-            pipeline.clone(),
-            &dynamic_state,
-            vec![buffer],
-            (),
-            (),
-        )?;
+                //let c = self.center();
 
-        // match self.format {
-        //     ShapeFormat::Fill => {
+                let pc = vs::ty::PushConstantData {
+                    resolution: res.position,
+                };
 
-        //     },
-        //     ShapeFormat::Line => {
-        //         let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
+                builder.draw(
+                    pipelines.default_fill.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    pc,
+                )?;
+            },
+            ShapeFormat::Line => {
+                let buffer = Arc::new(buffer_pool.chunk(self.to_line_vec().clone())?);
 
-        //         builder.draw(
-        //             shapes_pipeline.default_line.clone(),
-        //             &dynamic_state,
-        //             vec![buffer],
-        //             (),
-        //             (),
-        //         )?;
-        //     }
-        // }
+                //let c = self.center();
+
+                let pc = vs::ty::PushConstantData {
+                    resolution: res.position,
+                };
+
+                builder.draw(
+                    pipelines.default_line.clone(),
+                    &dynamic_state,
+                    vec![buffer],
+                    (),
+                    pc,
+                )?;
+            }
+        }
         
 
         Ok(())
@@ -547,18 +580,19 @@ impl Shape for Circle {
         false
     }
 
-    fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
-        Box::new(Circle {
-            center: self.center.project(width, height),
-            radius: self.radius.project(width, height),
-        })
-    }
+    // fn project(&self, width: f32, height: f32) -> Box<dyn Shape> {
+    //     Box::new(Circle {
+    //         center: self.center.project(width, height),
+    //         radius: self.radius.project(width, height),
+    //     })
+    // }
 
     fn draw(&self,
         _builder: &mut AutoCommandBufferBuilder, 
         _buffer_pool: &CpuBufferPool<Vector>,
-        _pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        _dynamic_state: &DynamicState
+        _pipelines: &ShapesPipeline,
+        _dynamic_state: &DynamicState,
+        _res: Vector,
     ) -> Result<()> {
         Err(CoreError::Unimplemented)
     }
@@ -727,12 +761,21 @@ impl Vector {
     }
 
     pub fn unit(self) -> Self {
-        if self.position[0] == 0f32 && self.position[1] == 0f32 {
+        // if self.position[0] == 0f32 && self.position[1] == 0f32 {
+        //     return Vector {
+        //         position: [
+        //             1f32,
+        //             0f32,
+        //         ],
+        //         color: self.color,
+        //     }
+        // }
+
+        // self * (1f32 / self.hypot())
+
+        if self.x() == 0f32 && self.y() == 0f32 {
             return Vector {
-                position: [
-                    1f32,
-                    0f32,
-                ],
+                position: [1f32, 0f32],
                 color: self.color,
             }
         }
@@ -764,14 +807,9 @@ impl Vector {
         self.position[0] * v.position[1] - v.position[0] * self.position[1]
     }
 
-    pub fn project(self, width: f32, height: f32) -> Self {
-        Vector {
-            position: [
-                (self.position[0] + 0.5f32) / (width / 2f32) - 1f32,
-                1f32 - (self.position[1] + 0.5f32) / (height / 2f32),
-            ],
-            color: self.color,
-        }
+    pub fn unproject(self, v: Vector) -> Self {
+        let len = self.dot(v) / v.hypot();
+        v.unit() * len
     }
 
     pub fn lerp(self, v: Vector, th: f32) -> Self {

@@ -1,8 +1,6 @@
 use toml;
 use serde_derive::Deserialize;
 use std::fs;
-use std::{env, path::PathBuf};
-use glob::{glob, Paths};
 
 use crate::error::Result;
 
@@ -15,44 +13,14 @@ pub fn decode(path: &str) -> Result<WidgetConfig> {
     Ok(widget_config)
 }
 
-pub fn widget_paths(cfg: CoreConfig) -> Result<Paths> {
-    match cfg.root_path {
-        Some(path) => {
-            let full_path = path.join("**/*.toml");
-            Ok(glob(full_path.to_str().unwrap())?)
-        },
-        None => {
-            let env_path = env::current_dir()?;
-            let full_path = env_path.join("widgets/**/*.toml");
-            Ok(glob(full_path.to_str().unwrap())?)
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct CoreConfig {
-    root_path: Option<PathBuf>,
-}
-
-impl CoreConfig {
-    pub fn new() -> Result<CoreConfig> {
-        let env_path = env::current_dir()?;
-        let full_path = env_path.join("config.toml");
-        let data = fs::read_to_string(full_path)?;
-        let cfg: CoreConfig = toml::from_str(&data)?;
-
-        Ok(cfg)
-    }
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct WidgetConfig {
     // name of WidgetConfig <Optional>
     pub name: Option<String>,
     
     // Dimensions of window, width and height <Not-Optional>
-    pub width: u32,
-    pub height: u32,
+    pub width: f32,
+    pub height: f32,
 
     // Position of top left of window on the screen
     pub position: [f32; 2],
@@ -75,6 +43,8 @@ pub struct ShapeWidgetConfig {
 
     // Hex color value for shape background <Optional>
     pub color: Option<String>,
+
+    pub format: Option<Format>,
 }
 
 #[derive(Debug, Copy, Clone, Deserialize)]
@@ -83,20 +53,39 @@ pub enum Shapes {
     Rectangle,
 }
 
+#[derive(Debug, Copy, Clone, Deserialize)]
+pub enum Format {
+    Fill,
+    Line,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ToolWidgetConfig {
-    pub tool_type: Tools,
+    pub ty: Tools,
 
     pub shape: Vec<f32>,
 
     pub color: Option<String>,
 
-    pub action: Option<String>,
-
-    pub args: Option<Vec<String>>,
+    pub action: Option<Action>,
 }
 
 #[derive(Debug, Copy, Clone, Deserialize)]
 pub enum Tools {
     Button,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Action {
+    pub action: String,
+
+    pub args: Option<Vec<String>>,
+
+    pub ty: Type,
+}
+
+#[derive(Debug, Copy, Clone, Deserialize)]
+pub enum Type {
+    Clicked,
+    MouseHover,
 }

@@ -5,10 +5,10 @@ color = "#ffffff96"
 position = [1000, 150]
 
 [[tool]]
-tool_type = "Button"
+ty = "Button"
 color = "#000000ff"
 shape = [
-    500, 50,
-    800, 400
+    1, 1,
+    899, 499
 ]
-action = "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+action = { action = "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", ty = "Clicked" }

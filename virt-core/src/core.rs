@@ -2,18 +2,17 @@ use vulkano::buffer::{CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
-use vulkano::image::{ImageUsage};
+use vulkano::image::ImageUsage;
 use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
-use vulkano::pipeline::GraphicsPipelineAbstract;
-
+//use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::swapchain;
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain, Surface
 };
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::{sync, sync::FlushError, sync::GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
+
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder, WindowId};
 use winit::dpi::{LogicalSize, LogicalPosition};
@@ -27,8 +26,7 @@ use crate::decoder;
 use crate::widget::Widget;
 use crate::decoder::WidgetConfig;
 use crate::error::{CoreError, Result};
-use crate::pipelines::new_default;
-
+use crate::pipelines::ShapesPipeline;
 
 
 pub struct CoreState {
@@ -47,10 +45,9 @@ impl CoreState {
     pub fn new() -> Result<(CoreState, EventLoop<()>)>{
         let instance = Instance::new(None, &vulkano_win::required_extensions(), None)?;
         let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::IntegratedGpu)?;
+        let physical = PhysicalDevice::from_index(&instance, physical_index).unwrap();
 
         let event_loop = EventLoop::new();
-
-        let physical = PhysicalDevice::from_index(&instance, physical_index).unwrap();
 
         let queue_family = physical
         .queue_families()
@@ -59,6 +56,7 @@ impl CoreState {
 
         let device_ext = DeviceExtensions {
             khr_swapchain: true,
+            khr_storage_buffer_storage_class: true,
             ..DeviceExtensions::none()
         };
         let (device, mut queues) = Device::new(
@@ -70,16 +68,16 @@ impl CoreState {
 
         let queue = queues.next().unwrap();
 
-        let cfg = decoder::CoreConfig::new()?;
-
         let mut surfaces = HashMap::new();
 
-        let widget_paths = decoder::widget_paths(cfg)?;
+        let cfg = CoreConfig::new()?;
+
+        let widget_paths = widget_paths(cfg)?;
 
         for path in widget_paths {
             match path {
                 Ok(p) => {
-                    println!("{:?}", p.display());
+                    //println!("{:?}", p.display());
                     let widget_config = decoder::decode(p.to_str().unwrap())?;
 
                     let surface = CoreSurface::new(&physical, device.clone(), queue.clone(), &event_loop, instance.clone(), widget_config)?;
@@ -93,8 +91,6 @@ impl CoreState {
         vulkano::impl_vertex!(Vector, position, color);
 
         let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
-
-        //let shapes_pipeline = ShapesPipeline::new(device.clone(), surface.render_pass.clone())?;
 
         Ok((CoreState {
             instance,
@@ -148,7 +144,7 @@ impl CoreState {
             &mut builder, 
             &self.buffer_pool, 
             surface.framebuffers[image_num].clone(), 
-            surface.pipeline.clone(),
+            &surface.pipelines,
             &surface.dynamic_state,
         )?;
     
@@ -193,7 +189,7 @@ pub struct CoreSurface {
     pub recreate_swapchain: bool,
     pub previous_frame_end: Option<Box<(dyn GpuFuture)>>,
     pub framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-    pub pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pub pipelines: ShapesPipeline,
     
     pub widget: Widget,
 
@@ -206,7 +202,7 @@ impl CoreSurface {
         let widget = Widget::new(config)?;
 
         let surface = WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(widget.width, widget.height))
+        .with_inner_size(LogicalSize::new(widget.bound.x(), widget.bound.y()))
         .with_decorations(false)    
         .with_transparent(true)
         .with_resizable(false)
@@ -271,12 +267,12 @@ impl CoreSurface {
         let framebuffers =
             window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
-        let pipeline = new_default(device.clone(), render_pass.clone())?;
-
         let recreate_swapchain = false;
 
 
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+        let pipelines = ShapesPipeline::new(device.clone(), render_pass.clone())?;
 
         Ok(
             CoreSurface {
@@ -287,8 +283,8 @@ impl CoreSurface {
                 recreate_swapchain,
                 previous_frame_end,
                 framebuffers,
-                pipeline,
-                widget: widget,
+                pipelines,
+                widget,
                 cur_mouse_pos: None,
                 las_mouse_pos: None,
             }

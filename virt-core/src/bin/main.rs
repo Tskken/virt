@@ -12,11 +12,14 @@ fn main() {
     let (mut core_state, event_loop) = CoreState::new().unwrap();
 
     event_loop.run(move |event, _, control_flow| {
+        //*control_flow = ControlFlow::Poll;
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
+                //core_state.surfaces.remove(&window_id);
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent {
@@ -40,13 +43,15 @@ fn main() {
             } => {
                 let surface = core_state.surfaces.get_mut(&window_id).unwrap();
 
+                //let position = position.to_logical::<f64>(1f64);
+
                 match surface.cur_mouse_pos {
                     Some(val) => {
                         surface.las_mouse_pos = Some(val);
-                        surface.cur_mouse_pos = Some(Vector::new(position.x as f32, position.y as f32).project(surface.widget.width as f32, surface.widget.height as f32));
+                        surface.cur_mouse_pos = Some(Vector::new(position.x as f32, position.y as f32));
                     },
                     None => {
-                        surface.cur_mouse_pos = Some(Vector::new(position.x as f32, position.y as f32).project(surface.widget.width as f32, surface.widget.height as f32));
+                        surface.cur_mouse_pos = Some(Vector::new(position.x as f32, position.y as f32));
                     }
                 }
 
@@ -64,10 +69,11 @@ fn main() {
             } => {
                 if state == ElementState::Released && button == MouseButton::Left {
                     let surface = core_state.surfaces.get_mut(&window_id).unwrap();
+
                     match surface.cur_mouse_pos {
                         Some(val) => {
                             for button in &mut surface.widget.buttons {
-                                button.clicked(val).unwrap();
+                                button.clicked(val.unproject(surface.widget.bound)).unwrap();
                             };
                         },
                         None => {},

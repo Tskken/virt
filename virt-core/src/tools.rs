@@ -1,5 +1,5 @@
 use crate::geometry::{Shape, Vector};
-use crate::action::Action;
+use crate::action::{Action, ActionType};
 use crate::error::Result;
 
 #[derive(Debug)]
@@ -20,12 +20,14 @@ impl Button {
     pub fn clicked(&mut self, v: Vector) -> Result<()> {
         match &mut self.action {
             Some(a) => {
-                if self.shape.contains(v) {
-                    a.run()?;
-                }
+                if a.ty == ActionType::Clicked {
+                    if self.shape.contains(v) {
+                        a.run()?;
+                    };
+                };
             },
             None => {}
-        }
+        };
 
         Ok(())
     }

@@ -6,6 +6,11 @@ use vulkano::pipeline::viewport::Viewport;
 use winit::window::Window;
 
 use std::sync::Arc;
+use std::{env, path::PathBuf};
+use glob::{glob, Paths};
+use toml;
+use serde_derive::Deserialize;
+use std::fs;
 
 use crate::error::{CoreError, Result};
 
@@ -17,6 +22,36 @@ pub fn find_device_index(instance: Arc<Instance>, ty: PhysicalDeviceType) -> Res
     };
 
     Err(CoreError::NoSupportedPhysicalDevice)
+}
+
+pub fn widget_paths(cfg: CoreConfig) -> Result<Paths> {
+    match cfg.root_path {
+        Some(path) => {
+            let full_path = path.join("**/*.toml");
+            Ok(glob(full_path.to_str().unwrap())?)
+        },
+        None => {
+            let env_path = env::current_dir()?;
+            let full_path = env_path.join("widgets/**/*.toml");
+            Ok(glob(full_path.to_str().unwrap())?)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoreConfig {
+    root_path: Option<PathBuf>,
+}
+
+impl CoreConfig {
+    pub fn new() -> Result<CoreConfig> {
+        let env_path = env::current_dir()?;
+        let full_path = env_path.join("config.toml");
+        let data = fs::read_to_string(full_path)?;
+        let cfg: CoreConfig = toml::from_str(&data)?;
+
+        Ok(cfg)
+    }
 }
 
 pub fn window_size_dependent_setup(

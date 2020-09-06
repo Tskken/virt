@@ -3,12 +3,14 @@ use crate::error::{CoreError, Result};
 
 #[derive(Debug)]
 pub struct Action {
+    pub ty: ActionType,
     pub command: Command,
 }
 
 impl Action {
-    pub fn new(command: String) -> Action {
+    pub fn new(command: String, ty: ActionType) -> Action {
         Action {
+            ty,
             command: Command::new(command),
         }
     }
@@ -23,4 +25,10 @@ impl Action {
             Err(e) => return Err(CoreError::from(e)),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ActionType {
+    Clicked,
+    MouseHover,
 }

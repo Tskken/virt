@@ -1,21 +1,20 @@
-use crate::decoder::{WidgetConfig, Shapes, Tools};
+use crate::decoder::{WidgetConfig, Shapes, Tools, Type};
 use crate::error::{CoreError, Result};
 use crate::geometry::*;
 use crate::util::Color;
 use crate::tools::Button;
-use crate::action::Action;
+use crate::action::{Action, ActionType};
+use crate::pipelines::{ShapesPipeline, vs};
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
 use vulkano::framebuffer::FramebufferAbstract;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Widget {
-    pub width: u32,
-    pub height: u32,
+    pub bound: Vector,
 
     pub position: Vector,
 
@@ -29,8 +28,7 @@ pub struct Widget {
 impl Widget {
     pub fn new(config: WidgetConfig) -> Result<Widget> {
         let mut widget = Widget{
-            width: config.width,
-            height: config.height,
+            bound: Vector::new(config.width, config.height),
             position: Vector::new(config.position[0], config.position[1]),
             color: Color::none(),
             shapes: Vec::new(),
@@ -57,15 +55,14 @@ impl Widget {
                                 Vector::new(s.shape[0], s.shape[1]),
                                 Vector::new(s.shape[2], s.shape[3]),
                                 Vector::new(s.shape[4], s.shape[5]),
-                            )
-                            .project(config.width as f32, config.height as f32);
+                            );
 
                             match s.color {
                                 Some(c) => {
                                     widget.shapes.push(triangle.color(Color::from_hex(hex::decode(&c[1..])?)));
                                 },
                                 None => {
-                                    widget.shapes.push(triangle);
+                                    widget.shapes.push(Box::new(triangle));
                                 }
                             }
                         },
@@ -77,15 +74,31 @@ impl Widget {
                             let rectangle = Rectangle::new(
                                 Vector::new(s.shape[0], s.shape[1]), 
                                 Vector::new(s.shape[2], s.shape[3])
-                            )
-                            .project(config.width as f32, config.height as f32);
+                            );
+
+                            // match s.format {
+                            //     Some(f) => {
+                            //         match f {
+                            //             Format::Fill => {
+                            //                 rectangle = rectangle.format(ShapeFormat::Fill);
+                            //             },
+                            //             Format::Line => {
+        
+                            //             }
+                            //         }
+                            //     },
+                            //     None => {
+
+                            //     }
+
+                            // }
 
                             match s.color {
                                 Some(c) => {
                                     widget.shapes.push(rectangle.color(Color::from_hex(hex::decode(&c[1..])?)));
                                 },
                                 None => {
-                                    widget.shapes.push(rectangle);
+                                    widget.shapes.push(Box::new(rectangle));
                                 }
                             };
                         },
@@ -98,7 +111,7 @@ impl Widget {
         match config.tool {
             Some(tools) => {
                 for t in tools {
-                    match t.tool_type {
+                    match t.ty {
                         Tools::Button => {
                             if t.shape.len() != 4 {
                                 return Err(CoreError::InvalidShapeFormat);
@@ -107,19 +120,30 @@ impl Widget {
                             let rectangle = Rectangle::new(
                                 Vector::new(t.shape[0], t.shape[1]), 
                                 Vector::new(t.shape[2], t.shape[3])
-                            )
-                            .project(config.width as f32, config.height as f32);
+                            );
 
                             match t.color {
                                 Some(c) => {
                                     match t.action {
                                          Some(a) => {
-                                            let button = Button::new(
-                                                rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
-                                                Some(Action::new(a)),
-                                            );
-
-                                            widget.buttons.push(button);
+                                             match a.ty {
+                                                 Type::Clicked => {
+                                                    let button = Button::new(
+                                                        rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
+                                                        Some(Action::new(a.action, ActionType::Clicked)),
+                                                    );
+        
+                                                    widget.buttons.push(button);
+                                                 }
+                                                 Type::MouseHover => {
+                                                    let button = Button::new(
+                                                        rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
+                                                        None,
+                                                    );
+        
+                                                    widget.buttons.push(button);
+                                                 }
+                                             }
                                          },
                                          None => {
                                             let button = Button::new(
@@ -134,16 +158,28 @@ impl Widget {
                                 None => {
                                     match t.action {
                                         Some(a) => {
-                                           let button = Button::new(
-                                               rectangle,
-                                               Some(Action::new(a)),
-                                           );
-
-                                           widget.buttons.push(button);
+                                            match a.ty {
+                                                Type::Clicked => {
+                                                    let button = Button::new(
+                                                        Box::new(rectangle),
+                                                        Some(Action::new(a.action, ActionType::Clicked)),
+                                                    );
+         
+                                                    widget.buttons.push(button);
+                                                },
+                                                Type::MouseHover => {
+                                                    let button = Button::new(
+                                                        Box::new(rectangle),
+                                                        None,
+                                                    );
+         
+                                                    widget.buttons.push(button);
+                                                }
+                                            }
                                         },
                                         None => {
                                            let button = Button::new(
-                                               rectangle,
+                                               Box::new(rectangle),
                                                None,
                                            );
 
@@ -168,18 +204,18 @@ impl Widget {
         builder: &mut AutoCommandBufferBuilder, 
         buffer_pool: &CpuBufferPool<Vector>,
         frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        pipelines: &ShapesPipeline,
         dynamic_state: &DynamicState,
     ) -> Result<()> {
 
         builder.begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])?;
 
         for shape in &self.shapes {
-            shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state)?;
+            shape.draw(builder, buffer_pool, &pipelines, dynamic_state, self.bound)?;
         }
 
         for button in &self.buttons {
-            button.shape.draw(builder, buffer_pool, pipeline.clone(), dynamic_state)?;
+            button.shape.draw(builder, buffer_pool, &pipelines, dynamic_state, self.bound)?;
         }
 
         Ok(())

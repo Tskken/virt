@@ -5,27 +5,24 @@ color = "#00000096"
 position = [50, 50]
 
 [[shape]]
-name = "test triangle"
 shape_type = "Triangle"
 color = "#ffffffff"
 shape = [
     50, 50, 
     250, 250, 
-    400, 50
+    450, 50
 ]
 
 [[shape]]
-name = "test triangle"
 shape_type = "Triangle"
 color = "#ffffffff"
 shape = [
-    50, 400,
-    300, 300,
-    400, 400
+    50, 450,
+    250, 250,
+    450, 450
 ]
 
 [[shape]]
-name = "test triangle"
 shape_type = "Rectangle"
 color = "#ffffffff"
 shape = [
