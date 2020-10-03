@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use crate::util::Color;
 use crate::error::{CoreError, Result};
-use crate::pipelines::{ShapesPipeline, vs::ty::PushConstantData, vs};
+use crate::pipelines::{ShapesPipeline, vs};
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;

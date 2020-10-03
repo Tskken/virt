@@ -4,7 +4,7 @@ use crate::geometry::*;
 use crate::util::Color;
 use crate::tools::Button;
 use crate::action::{Action, ActionType};
-use crate::pipelines::{ShapesPipeline, vs};
+use crate::pipelines::ShapesPipeline;
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
