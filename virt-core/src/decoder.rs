@@ -87,5 +87,4 @@ pub struct Action {
 #[derive(Debug, Copy, Clone, Deserialize)]
 pub enum Type {
     Clicked,
-    MouseHover,
 }

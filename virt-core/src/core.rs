@@ -17,11 +17,14 @@ use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder, WindowId};
 use winit::dpi::{LogicalSize, LogicalPosition};
 
+use cgmath::Vector2;
+
 use std::sync::Arc;
 use std::collections::HashMap;
 
 use crate::util::*;
-use crate::geometry::Vector;
+//use crate::geometry::Vector;
+use crate::vector::Vector;
 use crate::decoder;
 use crate::widget::Widget;
 use crate::decoder::WidgetConfig;
@@ -36,15 +39,13 @@ pub struct CoreState {
     pub queue: Arc<Queue>,
     pub device: Arc<Device>,
 
-    pub buffer_pool: CpuBufferPool<Vector>,
-
     pub surfaces: HashMap<WindowId, CoreSurface>,
 }
 
 impl CoreState {
     pub fn new() -> Result<(CoreState, EventLoop<()>)>{
         let instance = Instance::new(None, &vulkano_win::required_extensions(), None)?;
-        let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::IntegratedGpu)?;
+        let physical_index = find_device_index(instance.clone(), PhysicalDeviceType::DiscreteGpu)?;
         let physical = PhysicalDevice::from_index(&instance, physical_index).unwrap();
 
         let event_loop = EventLoop::new();
@@ -88,16 +89,15 @@ impl CoreState {
             }
         }
 
-        vulkano::impl_vertex!(Vector, position, color);
+        vulkano::impl_vertex!(Vector, position);
 
-        let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
+        //let buffer_pool: CpuBufferPool<Vector> = CpuBufferPool::vertex_buffer(device.clone());
 
         Ok((CoreState {
             instance,
             physical_index,
             queue,
             device,
-            buffer_pool,
             surfaces,
         },
         event_loop))
@@ -141,8 +141,8 @@ impl CoreState {
         )?;
 
         surface.widget.draw(
+            self.device.clone(),
             &mut builder, 
-            &self.buffer_pool, 
             surface.framebuffers[image_num].clone(), 
             &surface.pipelines,
             &surface.dynamic_state,
@@ -268,7 +268,6 @@ impl CoreSurface {
             window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
         let recreate_swapchain = false;
-
 
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
 

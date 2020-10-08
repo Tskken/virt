@@ -6,7 +6,7 @@ use virt_core::core::CoreState;
 use winit::event::{Event, WindowEvent, ElementState, MouseButton};
 use winit::event_loop::ControlFlow;
 
-use virt_core::geometry::Vector;
+use virt_core::vector::Vector;
 
 fn main() {
     let (mut core_state, event_loop) = CoreState::new().unwrap();

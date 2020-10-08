@@ -9,6 +9,6 @@ ty = "Button"
 color = "#000000ff"
 shape = [
     1, 1,
-    899, 499
+    898, 498
 ]
 action = { action = "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", ty = "Clicked" }

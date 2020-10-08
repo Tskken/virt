@@ -27,5 +27,5 @@ shape_type = "Rectangle"
 color = "#ffffffff"
 shape = [
     500, 50,
-    800, 400
+    300, 300
 ]

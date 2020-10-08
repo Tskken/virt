@@ -1,7 +1,8 @@
 use crate::decoder::{WidgetConfig, Shapes, Tools, Type};
 use crate::error::{CoreError, Result};
-use crate::geometry::*;
-use crate::util::Color;
+use crate::shape::*;
+use crate::vector::Vector;
+use crate::color::Color;
 use crate::tools::Button;
 use crate::action::{Action, ActionType};
 use crate::pipelines::ShapesPipeline;
@@ -9,6 +10,8 @@ use crate::pipelines::ShapesPipeline;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::buffer::CpuBufferPool;
 use vulkano::framebuffer::FramebufferAbstract;
+use vulkano::device::Device;
+use vulkano::format::ClearValue;
 
 use std::sync::Arc;
 
@@ -18,7 +21,7 @@ pub struct Widget {
 
     pub position: Vector,
 
-    pub color: [f32; 4],
+    pub color: Color,
 
     pub shapes: Vec<Box<dyn Shape>>,
 
@@ -30,7 +33,7 @@ impl Widget {
         let mut widget = Widget{
             bound: Vector::new(config.width, config.height),
             position: Vector::new(config.position[0], config.position[1]),
-            color: Color::none(),
+            color: Color::default(),
             shapes: Vec::new(),
             buttons: Vec::new(),
         };
@@ -51,7 +54,7 @@ impl Widget {
                                 return Err(CoreError::InvalidShapeFormat);
                             };
 
-                            let triangle = Triangle::new(
+                            let mut triangle = Triangle::new(
                                 Vector::new(s.shape[0], s.shape[1]),
                                 Vector::new(s.shape[2], s.shape[3]),
                                 Vector::new(s.shape[4], s.shape[5]),
@@ -59,7 +62,8 @@ impl Widget {
 
                             match s.color {
                                 Some(c) => {
-                                    widget.shapes.push(triangle.color(Color::from_hex(hex::decode(&c[1..])?)));
+                                    triangle.color(Color::from_hex(hex::decode(&c[1..])?));
+                                    widget.shapes.push(Box::new(triangle));
                                 },
                                 None => {
                                     widget.shapes.push(Box::new(triangle));
@@ -71,31 +75,14 @@ impl Widget {
                                 return Err(CoreError::InvalidShapeFormat);
                             };
 
-                            let rectangle = Rectangle::new(
-                                Vector::new(s.shape[0], s.shape[1]), 
-                                Vector::new(s.shape[2], s.shape[3])
+                            let mut rectangle = Rectangle::new(
+                                s.shape[0], s.shape[1], s.shape[2], s.shape[3]
                             );
-
-                            // match s.format {
-                            //     Some(f) => {
-                            //         match f {
-                            //             Format::Fill => {
-                            //                 rectangle = rectangle.format(ShapeFormat::Fill);
-                            //             },
-                            //             Format::Line => {
-        
-                            //             }
-                            //         }
-                            //     },
-                            //     None => {
-
-                            //     }
-
-                            // }
 
                             match s.color {
                                 Some(c) => {
-                                    widget.shapes.push(rectangle.color(Color::from_hex(hex::decode(&c[1..])?)));
+                                    rectangle.color(Color::from_hex(hex::decode(&c[1..])?));
+                                    widget.shapes.push(Box::new(rectangle));
                                 },
                                 None => {
                                     widget.shapes.push(Box::new(rectangle));
@@ -117,9 +104,8 @@ impl Widget {
                                 return Err(CoreError::InvalidShapeFormat);
                             };
 
-                            let rectangle = Rectangle::new(
-                                Vector::new(t.shape[0], t.shape[1]), 
-                                Vector::new(t.shape[2], t.shape[3])
+                            let mut rectangle = Rectangle::new(
+                                t.shape[0], t.shape[1], t.shape[2], t.shape[3]
                             );
 
                             match t.color {
@@ -128,17 +114,10 @@ impl Widget {
                                          Some(a) => {
                                              match a.ty {
                                                  Type::Clicked => {
+                                                    rectangle.color(Color::from_hex(hex::decode(&c[1..])?));
                                                     let button = Button::new(
-                                                        rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
+                                                        Box::new(rectangle),
                                                         Some(Action::new(a.action, ActionType::Clicked)),
-                                                    );
-        
-                                                    widget.buttons.push(button);
-                                                 }
-                                                 Type::MouseHover => {
-                                                    let button = Button::new(
-                                                        rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
-                                                        None,
                                                     );
         
                                                     widget.buttons.push(button);
@@ -146,8 +125,9 @@ impl Widget {
                                              }
                                          },
                                          None => {
+                                            rectangle.color(Color::from_hex(hex::decode(&c[1..])?));
                                             let button = Button::new(
-                                                rectangle.color(Color::from_hex(hex::decode(&c[1..])?)),
+                                                Box::new(rectangle),
                                                 None,
                                             );
 
@@ -163,14 +143,6 @@ impl Widget {
                                                     let button = Button::new(
                                                         Box::new(rectangle),
                                                         Some(Action::new(a.action, ActionType::Clicked)),
-                                                    );
-         
-                                                    widget.buttons.push(button);
-                                                },
-                                                Type::MouseHover => {
-                                                    let button = Button::new(
-                                                        Box::new(rectangle),
-                                                        None,
                                                     );
          
                                                     widget.buttons.push(button);
@@ -200,22 +172,21 @@ impl Widget {
     }
 
     pub fn draw(
-        &self,
+        &mut self,
+        device: Arc<Device>,
         builder: &mut AutoCommandBufferBuilder, 
-        buffer_pool: &CpuBufferPool<Vector>,
         frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
         pipelines: &ShapesPipeline,
         dynamic_state: &DynamicState,
     ) -> Result<()> {
+        builder.begin_render_pass(frame_buffer.clone(), false, vec![ClearValue::Float(self.color.to_float())])?;
 
-        builder.begin_render_pass(frame_buffer.clone(), false, vec![self.color.into()])?;
-
-        for shape in &self.shapes {
-            shape.draw(builder, buffer_pool, &pipelines, dynamic_state, self.bound)?;
+        for shape in self.shapes.iter_mut() {
+            shape.draw(device.clone(), builder, &pipelines, dynamic_state, self.bound);
         }
 
-        for button in &self.buttons {
-            button.shape.draw(builder, buffer_pool, &pipelines, dynamic_state, self.bound)?;
+        for button in self.buttons.iter_mut() {
+            button.shape.draw(device.clone(), builder, &pipelines, dynamic_state, self.bound);
         }
 
         Ok(())

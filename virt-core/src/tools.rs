@@ -1,4 +1,5 @@
-use crate::geometry::{Shape, Vector};
+use crate::shape::Shape;
+use crate::vector::Vector;
 use crate::action::{Action, ActionType};
 use crate::error::Result;
 
